@@ -1,0 +1,133 @@
+{
+  "_meta": {
+    "generated_at": "2026-04-02",
+    "schema": "RICHGO_KR.HACKATHON_2026",
+    "model_version": "C+",
+    "plan_freeze": "2026-04-01"
+  },
+  "tables": {
+    "DANJI_APT_INFO": {
+      "row_count": 3331,
+      "size_bytes": 91136,
+      "columns": [
+        {"name": "BJD_CODE",        "type": "TEXT",   "description": "법정동 코드 (10자리)"},
+        {"name": "SD",              "type": "TEXT",   "description": "시도명"},
+        {"name": "SGG",             "type": "TEXT",   "description": "시군구명"},
+        {"name": "EMD",             "type": "TEXT",   "description": "읍면동명"},
+        {"name": "DANJI_ID",        "type": "TEXT",   "description": "단지 고유 ID (PK)"},
+        {"name": "DANJI",           "type": "TEXT",   "description": "단지명"},
+        {"name": "BUILDING_TYPE",   "type": "TEXT",   "description": "건물유형 (아파트/주상복합)"},
+        {"name": "AGES_YEAR",       "type": "NUMBER", "description": "건물 사용연수 (년)"},
+        {"name": "AGES_MONTH",      "type": "NUMBER", "description": "기준 년월 (YYYYMM)"},
+        {"name": "TOTAL_HOUSEHOLDS","type": "NUMBER", "description": "총 세대수"},
+        {"name": "LIVING_SCORE",    "type": "NUMBER", "description": "생활편의점수 0~100 (교육/편의 프록시)"},
+        {"name": "CONSTRUCTOR_RANK","type": "NUMBER", "description": "건설사 브랜드 순위 (NULL 가능)"}
+      ],
+      "sample": {
+        "DANJI_ID": "a7qzYub",
+        "DANJI": "경희궁의아침3단지(주상복합)",
+        "SD": "서울", "SGG": "종로구", "EMD": "내수동",
+        "AGES_YEAR": 23, "TOTAL_HOUSEHOLDS": 150,
+        "LIVING_SCORE": 91, "CONSTRUCTOR_RANK": 23
+      }
+    },
+    "DANJI_APT_RICHGO_MARKET_PRICE_M_H": {
+      "row_count": 466555,
+      "size_bytes": 16245760,
+      "columns": [
+        {"name": "DANJI_ID",                       "type": "TEXT",   "description": "단지 ID (FK)"},
+        {"name": "YYYYMMDD",                       "type": "DATE",   "description": "시세 기준월 (매월 1일)"},
+        {"name": "MEAN_MEME_PRICE",                "type": "NUMBER", "description": "평균 매매가 (만원)"},
+        {"name": "MEAN_JEONSE_PRICE",              "type": "NUMBER", "description": "평균 전세가 (만원)"},
+        {"name": "MEME_PRICE_PER_SUPPLY_PYEONG",   "type": "FLOAT",  "description": "평당 매매가 (만원/평)"},
+        {"name": "JEONSE_PRICE_PER_SUPPLY_PYEONG", "type": "FLOAT",  "description": "평당 전세가 (만원/평)"},
+        {"name": "MEME_CAP_PRICE",                 "type": "NUMBER", "description": "최고 매매 실거래가 (만원)"}
+      ],
+      "sample": {
+        "DANJI_ID": "a7qzYub",
+        "DANJI": "경희궁의아침3단지(주상복합)",
+        "YYYYMMDD": "2026-03-01",
+        "MEAN_MEME_PRICE": 250977,
+        "MEAN_JEONSE_PRICE": 149350,
+        "MEME_PRICE_PER_SUPPLY_PYEONG": 4840.23,
+        "JEONSE_PRICE_PER_SUPPLY_PYEONG": 2883.17,
+        "MEME_CAP_PRICE": 37646580
+      }
+    },
+    "REGION_APT_RICHGO_MARKET_PRICE_M_H": {
+      "row_count": 36225,
+      "size_bytes": 927744,
+      "columns": [
+        {"name": "REGION_LEVEL",    "type": "TEXT",   "description": "지역 단계 (sd/sgg/emd)"},
+        {"name": "BJD_CODE",        "type": "TEXT",   "description": "법정동 코드"},
+        {"name": "SGG",             "type": "TEXT",   "description": "시군구명"},
+        {"name": "TOTAL_HOUSEHOLDS","type": "NUMBER", "description": "지역 총 세대수 (공급 지표)"},
+        {"name": "YYYYMMDD",        "type": "DATE",   "description": "기준월"},
+        {"name": "MEAN_MEME_PRICE", "type": "NUMBER", "description": "지역 평균 매매가 (만원)"},
+        {"name": "MEAN_JEONSE_PRICE","type": "NUMBER","description": "지역 평균 전세가 (만원)"}
+      ]
+    },
+    "REGION_POPULATION_MOVEMENT": {
+      "row_count": 150705,
+      "size_bytes": 903680,
+      "columns": [
+        {"name": "MOVEMENT_TYPE", "type": "TEXT",   "description": "이동 유형 (순이동/전입/전출)"},
+        {"name": "REGION_LEVEL",  "type": "TEXT",   "description": "지역 단계 (sd/sgg)"},
+        {"name": "SGG",           "type": "TEXT",   "description": "시군구명 (sd level에서 NULL)"},
+        {"name": "YYYYMMDD",      "type": "DATE",   "description": "기준월"},
+        {"name": "POPULATION",    "type": "NUMBER", "description": "순이동 인구수 (음수=순유출)"}
+      ],
+      "sample": {
+        "MOVEMENT_TYPE": "순이동", "REGION_LEVEL": "sd",
+        "SD": "서울", "YYYYMMDD": "2011-01-01", "POPULATION": -4324
+      }
+    }
+  },
+  "indicator_mapping": {
+    "jeonse_ratio": {
+      "formula": "MEAN_JEONSE_PRICE / NULLIF(MEAN_MEME_PRICE, 0)",
+      "table": "DANJI_APT_RICHGO_MARKET_PRICE_M_H",
+      "safety_floor": 0.70,
+      "confidence_deduction_if_dong_avg": 0.15,
+      "sample_range": "0.2652 ~ 0.9101 (2026-03 실측)",
+      "null_guard": "NULLIF(MEAN_MEME_PRICE, 0) 필수"
+    },
+    "pir": {
+      "formula": "MEAN_MEME_PRICE / REGIONAL_INCOME_CONSTANT",
+      "table": "DANJI_APT_RICHGO_MARKET_PRICE_M_H",
+      "note": "소득 데이터 미존재 → KOSIS 2024 지역별 상수 사용",
+      "undervalue_threshold_ratio": 0.85,
+      "confidence_deduction": 0.20,
+      "income_constants_man_won": {
+        "서울": 5500, "경기": 4800, "인천": 4500,
+        "부산": 4200, "default": 4500
+      }
+    },
+    "supply_score": {
+      "formula": "R = TOTAL_HOUSEHOLDS_now / TOTAL_HOUSEHOLDS_prev_year",
+      "table": "REGION_APT_RICHGO_MARKET_PRICE_M_H",
+      "thresholds": {
+        "opportunity_ceiling": 0.8,
+        "linear_penalty_end": 1.2,
+        "steep_penalty_end": 1.4
+      },
+      "score_range": "0 ~ 100"
+    },
+    "news_sentiment": {
+      "confirmed_sql_pattern": "SELECT SNOWFLAKE.CORTEX.SENTIMENT('text') AS s",
+      "avoid": "TRY_CAST(AI_SENTIMENT(...) AS DOUBLE) — __round__ error",
+      "scale": "raw_float * 5.0 in Python → -5 ~ +5",
+      "test_result": {
+        "input": "금리 인하로 부동산 시장이 활성화될 전망입니다.",
+        "raw": 0.09375,
+        "scaled": 0.46875
+      }
+    },
+    "s_alpha": {
+      "formula": "0.30*S_supply + 0.25*S_pir + 0.20*S_jeonse + 0.15*S_news + 0.10*S_commute",
+      "education_multiplier": 1.5,
+      "education_proxy": "LIVING_SCORE >= 90",
+      "execution_threshold": 80
+    }
+  }
+}
