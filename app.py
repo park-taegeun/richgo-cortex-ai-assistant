@@ -529,11 +529,17 @@ with st.sidebar:
     if st.button("통합 분석 실행", use_container_width=True, disabled=is_same_danji):
         with st.spinner("Snowflake 라이브 쿼리 중..."):
             try:
-                st.session_state["cur_data"] = engine.analyze(selected_current["DANJI_ID"])
-                st.session_state["tgt_data"] = engine.analyze(selected_target["DANJI_ID"])
-                st.success("분석 완료! 관제탑을 갱신합니다.")
-            except Exception as e:
-                st.error(f"오류 발생: {e}")
+                cur_res = engine.analyze(selected_current["DANJI_ID"])
+                tgt_res = engine.analyze(selected_target["DANJI_ID"])
+                
+                if cur_res is None or tgt_res is None:
+                    st.info("선택하신 단지는 현재 분석에 필요한 시세 데이터가 적재되지 않은 상태입니다. 인근의 다른 단지를 선택하여 분석을 진행해 주십시오.")
+                else:
+                    st.session_state["cur_data"] = cur_res
+                    st.session_state["tgt_data"] = tgt_res
+                    st.success("설정 완료")
+            except Exception:
+                st.info("선택하신 단지는 현재 분석에 필요한 시세 데이터가 적재되지 않은 상태입니다. 인근의 다른 단지를 선택하여 분석을 진행해 주십시오.")
 
     st.markdown("---")
     st.markdown(

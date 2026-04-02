@@ -186,14 +186,21 @@ class RichgoCortexEngine:
         deductions = []
 
         # 1. Metadata
-        info = self._client.fetch_danji_info(danji_id)
+        try:
+            info = self._client.fetch_danji_info(danji_id)
+        except ValueError:
+            return None
+            
         sd, sgg = info["sd"], info["sgg"]
 
         # 2. Market price (13 months)
         prices = self._client.fetch_market_price(danji_id, months=13)
         if not prices:
-            raise ValueError(f"No market price data for DANJI_ID '{danji_id}'")
+            return None
+            
         latest = prices[0]
+        if latest.get("mean_meme_price") is None or latest.get("mean_jeonse_price") is None:
+            return None
 
         # 3. Jeonse ratio
         jeonse_ratio, d_jeonse = self.compute_jeonse_ratio(
