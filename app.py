@@ -408,7 +408,7 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
         r=cur_vals + [cur_vals[0]],
         theta=categories + [categories[0]],
         fill="toself",
-        fillcolor="rgba(68,136,255,0.15)",
+        fillcolor="rgba(68,136,255,0.30)",
         line=dict(color="#4488FF", width=2),
         name=cur["danji_name"],
     ))
@@ -416,7 +416,7 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
         r=tgt_vals + [tgt_vals[0]],
         theta=categories + [categories[0]],
         fill="toself",
-        fillcolor=f"rgba(0,255,170,0.12)",
+        fillcolor=f"rgba(0,255,170,0.30)",
         line=dict(color=MINT, width=2.5),
         name=tgt["danji_name"],
     ))
@@ -615,24 +615,22 @@ with col_metrics:
     st.markdown("<div class='section-header'>핵심 지표</div>", unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
 
-    # 전세가율
     jrate = cur_data["jeonse_ratio"]
     jfloor = cur_data["jeonse_floor"]
     jcls = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
     m1.markdown(
-        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>하락장 방어력 (전세가율)</div>"
+        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>하락장 방어력 (전세가율) <b>(▲높을수록 안전)</b></div>"
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
         f"<div style='font-size:11px;color:#445566;'>바닥 {jfloor*100:.0f}% {'' if cur_data['jeonse_safety_ok'] else ''}</div>",
         unsafe_allow_html=True,
     )
 
-    # PIR
     pir = cur_data["pir"]
     pir_avg = cur_data["pir_5yr_avg"]
     pir_lbl = cur_data["pir_band_label"]
     pir_cls = "metric-ok" if cur_data["pir_undervalue_ok"] else ("metric-warn" if cur_data["pir_relative_index"] < 1.15 else "metric-bad")
     m2.markdown(
-        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다. 낮을수록 저평가 상태입니다.'>월급 대비 집값 수준</div>"
+        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다. 낮을수록 저평가 상태입니다.'>월급 대비 집값 수준 <b>(▼낮을수록 저평가)</b></div>"
         f"<div class='metric-value {pir_cls}'>{pir:.1f}yr</div>"
         f"<div style='font-size:11px;color:#445566;'>5yr avg {pir_avg:.1f} | {pir_lbl}</div>",
         unsafe_allow_html=True,
@@ -662,11 +660,11 @@ with col_metrics:
 
     # 초품아 & 뉴스
     m5, m6 = st.columns(2)
-    chobuma_icon = "초품아 ×1.5 가중" if cur_data["is_chobuma"] else "— 초품아 비해당"
+    chobuma_icon = "교육/생활 인프라 프리미엄 반영" if cur_data["is_chobuma"] else "— 교육 인프라 특이점 없음"
     chobuma_clr = MINT if cur_data["is_chobuma"] else "#445566"
     m5.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
-        f"<div class='metric-label'>생활/교육 점수</div>"
+        f"<div class='metric-label' title='역세권, 학세권 등의 실생활 가치 측정 점수입니다.'>생활/교육 점수</div>"
         f"<div style='font-size:20px;font-weight:700;color:#E8EAF0;'>{cur_data['living_score']}/100</div>"
         f"<div style='font-size:11px;color:{chobuma_clr};margin-top:4px;'>{chobuma_icon}</div>"
         f"</div>",
@@ -678,10 +676,42 @@ with col_metrics:
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
         f"<div class='metric-label'>Cortex 뉴스 심리</div>"
         f"<div class='metric-value {sent_cls}'>{sent:+.1f}pt</div>"
-        f"<div style='font-size:11px;color:#445566;margin-top:4px;'>스케일 −5 ~ +5</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
+
+
+# ── AI Master Docent (EXECUTIVE SUMMARY) ──────────────────────────────────────
+st.markdown("<div class='section-header' title='AI가 분석한 최종 권고 사항입니다.'>AI 마스터의 전략 제안 (Executive Summary)</div>", unsafe_allow_html=True)
+ai_score = tgt_data['s_alpha']
+ai_pir_ok = tgt_data['pir_undervalue_ok']
+ai_jeonse = tgt_data['jeonse_ratio']
+
+is_price_efficiency = (cur_data["latest_meme_price_man_won"] > tgt_data["latest_meme_price_man_won"]) and (cur_data["s_alpha"] < tgt_data["s_alpha"])
+
+if is_price_efficiency:
+    ai_msg = "자산 유동화형 상급지 이동: 자본 효율성이 극대화된 전략적 선택입니다."
+    ai_color = MINT
+elif ai_score >= 80 and ai_pir_ok:
+    ai_msg = "역사적 저평가 구간입니다. 상급지 이동의 골든타임입니다."
+    ai_color = MINT
+elif ai_score >= 80 and ai_jeonse < 0.4:
+    ai_msg = "가치는 높으나 전세 수요가 뒷받침되지 않습니다. 실거주 목적으로만 접근하되 유동성 리스크를 헷지하세요."
+    ai_color = YELLOW_NEO
+elif ai_score < 60:
+    ai_msg = "아직은 시장의 불확실성이 큽니다. 잠시 관망하며 기회를 엿보세요."
+    ai_color = RED_NEO
+else:
+    ai_msg = "안정적인 흐름을 보이고 있습니다. 자금 계획에 맞추어 보수적으로 접근하세요."
+    ai_color = "#E8EAF0"
+
+st.markdown(
+    f"<div style='padding:22px; border-left:6px solid {ai_color}; background:#11141A; margin-bottom: 32px; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);'>"
+    f"<div style='font-size:18px; font-weight:800; color:{ai_color}; margin-bottom: 8px;'>[AI 분석 결론]</div>"
+    f"<div style='font-size:16px; color:#E8EAF0; line-height:1.6; letter-spacing:-0.3px;'>{ai_msg}</div>"
+    f"</div>",
+    unsafe_allow_html=True,
+)
 
 
 # ── ROW 2: PIR Band Chart + Spatial Risk ─────────────────────────────────────
@@ -820,20 +850,28 @@ with col_delta:
     delta = tgt_data["s_alpha"] - cur_data["s_alpha"]
     delta_pct = round(delta / max(cur_data["s_alpha"], 1) * 100, 1)
 
+    is_trigger = (delta >= ALPHA_TRIGGER_DELTA and tgt_data["s_alpha"] >= ALPHA_TRIGGER_MIN)
+    if is_trigger:
+        delta_color = MINT
+        delta_glow = f"text-shadow:0 0 20px {MINT};"
+        trigger_text = f"<b style='color:{MINT};'>달성</b>"
+    else:
+        delta_color = "#888888"
+        delta_glow = "text-shadow:none;"
+        trigger_text = f"<b style='color:#888888;'>미달성</b> <span style='font-size:11px;color:#A0AEC0;'>(목표 점수 20점 이상 차이 필요)</span>"
+
     st.markdown(
         f"<div class='card' style='height:300px;display:flex;flex-direction:column;justify-content:center;'>"
         f"<div class='section-header'>점수 Delta</div>"
-        f"<div style='font-size:60px;font-weight:900;"
-        f"color:{MINT if delta > 0 else RED_NEO};"
-        f"text-shadow:0 0 20px {MINT if delta > 0 else RED_NEO}88;'>"
+        f"<div style='font-size:60px;font-weight:900;color:{delta_color};{delta_glow}'>"
         f"{delta:+d}pt</div>"
-        f"<div style='font-size:20px;font-weight:700;color:{MINT if delta > 0 else RED_NEO};margin-top:4px;'>"
+        f"<div style='font-size:20px;font-weight:700;color:{delta_color};margin-top:4px;'>"
         f"({delta_pct:+.1f}%)</div>"
         f"<hr style='border-color:{BORDER};margin:16px 0;'>"
         f"<div style='font-size:13px;color:#445566;line-height:1.8;'>"
         f"현재: <b style='color:#E8EAF0;'>{cur_data['s_alpha']}pt</b><br>"
         f"목표: <b style='color:#E8EAF0;'>{tgt_data['s_alpha']}pt</b><br>"
-        f"Alpha-Trigger: <b style='color:{MINT};'>{'달성' if (delta >= ALPHA_TRIGGER_DELTA and tgt_data['s_alpha'] >= ALPHA_TRIGGER_MIN) else '미달성'}</b>"
+        f"Alpha-Trigger: {trigger_text}"
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
@@ -870,33 +908,6 @@ else:
         f"</div>",
         unsafe_allow_html=True,
     )
-
-
-# ── AI Master Docent ──────────────────────────────────────────────────────────
-st.markdown("<div class='section-header' title='AI가 분석한 최종 권고 사항입니다.'>AI 마스터의 전략 제안</div>", unsafe_allow_html=True)
-ai_score = tgt_data['s_alpha']
-ai_pir_ok = tgt_data['pir_undervalue_ok']
-ai_jeonse = tgt_data['jeonse_ratio']
-
-if ai_score >= 80 and ai_pir_ok:
-    ai_msg = "역사적 저평가 구간입니다. 상급지 이동의 골든타임입니다."
-    ai_color = MINT
-elif ai_score >= 80 and ai_jeonse < 0.4:
-    ai_msg = "가치는 높으나 전세 수요가 뒷받침되지 않습니다. 실거주 목적으로만 접근하세요."
-    ai_color = YELLOW_NEO
-elif ai_score < 60:
-    ai_msg = "아직은 시장의 불확실성이 큽니다. 잠시 관망하며 기회를 엿보세요."
-    ai_color = RED_NEO
-else:
-    ai_msg = "안정적인 흐름을 보이고 있습니다. 자금 계획에 맞추어 보수적으로 접근하세요."
-    ai_color = "#E8EAF0"
-
-st.markdown(
-    f"<div style='padding:20px; border-left:4px solid {ai_color}; background:{CARD_BG}; border-radius: 4px; margin-top: 16px; margin-bottom: 24px; font-size:15px; color:#E8EAF0; line-height:1.6;'>"
-    f"<b>[AI 분석 결론]</b><br>{ai_msg}"
-    f"</div>",
-    unsafe_allow_html=True,
-)
 
 
 # ── Footer ────────────────────────────────────────────────────────────────────
