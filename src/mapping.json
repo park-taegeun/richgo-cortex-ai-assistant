@@ -3,8 +3,7 @@
     "generated_at": "2026-04-02",
     "schema": "RICHGO_KR.HACKATHON_2026",
     "model_version": "C+",
-    "plan_freeze": "2026-04-01",
-    "last_calibration": "2026-04-02"
+    "plan_freeze": "2026-04-01"
   },
   "tables": {
     "DANJI_APT_INFO": {
@@ -12,17 +11,17 @@
       "size_bytes": 91136,
       "columns": [
         {"name": "BJD_CODE",        "type": "TEXT",   "description": "법정동 코드 (10자리)"},
-        {"name": "SD",              "type": "TEXT",   "description": "시도명"},
-        {"name": "SGG",             "type": "TEXT",   "description": "시군구명"},
-        {"name": "EMD",             "type": "TEXT",   "description": "읍면동명"},
-        {"name": "DANJI_ID",        "type": "TEXT",   "description": "단지 고유 ID (PK)"},
+        {"name": "SD",              "type": "TEXT",   "description": "시도명 (e.g. 서울)"},
+        {"name": "SGG",             "type": "TEXT",   "description": "시군구명 (e.g. 종로구)"},
+        {"name": "EMD",             "type": "TEXT",   "description": "읍면동명 (e.g. 내수동)"},
+        {"name": "DANJI_ID",        "type": "TEXT",   "description": "단지 고유 ID (alphanumeric, PK)"},
         {"name": "DANJI",           "type": "TEXT",   "description": "단지명"},
         {"name": "BUILDING_TYPE",   "type": "TEXT",   "description": "건물유형 (아파트/주상복합)"},
         {"name": "AGES_YEAR",       "type": "NUMBER", "description": "건물 사용연수 (년)"},
-        {"name": "AGES_MONTH",      "type": "NUMBER", "description": "기준 년월 (YYYYMM)"},
+        {"name": "AGES_MONTH",      "type": "NUMBER", "description": "기준 년월 (YYYYMM encoding)"},
         {"name": "TOTAL_HOUSEHOLDS","type": "NUMBER", "description": "총 세대수"},
-        {"name": "LIVING_SCORE",    "type": "NUMBER", "description": "생활편의점수 0~100 (초품아 프록시)"},
-        {"name": "CONSTRUCTOR_RANK","type": "NUMBER", "description": "건설사 브랜드 순위 (NULL 가능)"}
+        {"name": "LIVING_SCORE",    "type": "NUMBER", "description": "생활편의점수 0~100 (교육/편의 프록시)"},
+        {"name": "CONSTRUCTOR_RANK","type": "NUMBER", "description": "건설사 브랜드 순위 (NULL = 미분류)"}
       ],
       "sample": {
         "DANJI_ID": "a7qzYub",
@@ -40,17 +39,17 @@
         {"name": "SD",                             "type": "TEXT",   "description": "시도명"},
         {"name": "SGG",                            "type": "TEXT",   "description": "시군구명"},
         {"name": "EMD",                            "type": "TEXT",   "description": "읍면동명"},
-        {"name": "DANJI_ID",                       "type": "TEXT",   "description": "단지 ID (FK)"},
+        {"name": "DANJI_ID",                       "type": "TEXT",   "description": "단지 ID (FK → DANJI_APT_INFO)"},
         {"name": "DANJI",                          "type": "TEXT",   "description": "단지명"},
         {"name": "BUILDING_TYPE",                  "type": "TEXT",   "description": "건물유형"},
         {"name": "AGES_YEAR",                      "type": "NUMBER", "description": "건물 사용연수"},
         {"name": "AGES_MONTH",                     "type": "NUMBER", "description": "기준 년월"},
         {"name": "TOTAL_HOUSEHOLDS",               "type": "NUMBER", "description": "총 세대수"},
         {"name": "YYYYMMDD",                       "type": "DATE",   "description": "시세 기준월 (매월 1일)"},
-        {"name": "MEAN_MEME_PRICE",                "type": "NUMBER", "description": "평균 매매가 (만원)"},
-        {"name": "MEAN_JEONSE_PRICE",              "type": "NUMBER", "description": "평균 전세가 (만원)"},
-        {"name": "MEME_PRICE_PER_SUPPLY_PYEONG",   "type": "FLOAT",  "description": "평당 매매가 (만원/평)"},
-        {"name": "JEONSE_PRICE_PER_SUPPLY_PYEONG", "type": "FLOAT",  "description": "평당 전세가 (만원/평)"},
+        {"name": "MEAN_MEME_PRICE",                "type": "NUMBER", "description": "평균 매매가 (단위: 만원)"},
+        {"name": "MEAN_JEONSE_PRICE",              "type": "NUMBER", "description": "평균 전세가 (단위: 만원)"},
+        {"name": "MEME_PRICE_PER_SUPPLY_PYEONG",   "type": "FLOAT",  "description": "공급면적 평당 매매가 (만원/평)"},
+        {"name": "JEONSE_PRICE_PER_SUPPLY_PYEONG", "type": "FLOAT",  "description": "공급면적 평당 전세가 (만원/평)"},
         {"name": "MEME_CAP_PRICE",                 "type": "NUMBER", "description": "최고 매매 실거래가 (만원)"}
       ],
       "sample": {
@@ -89,7 +88,7 @@
         {"name": "REGION_LEVEL",  "type": "TEXT",   "description": "지역 단계 (sd/sgg)"},
         {"name": "BJD_CODE",      "type": "TEXT",   "description": "법정동 코드"},
         {"name": "SD",            "type": "TEXT",   "description": "시도명"},
-        {"name": "SGG",           "type": "TEXT",   "description": "시군구명 (sd level에서 NULL)"},
+        {"name": "SGG",           "type": "TEXT",   "description": "시군구명 (NULL at sd level)"},
         {"name": "YYYYMMDD",      "type": "DATE",   "description": "기준월"},
         {"name": "POPULATION",    "type": "NUMBER", "description": "순이동 인구수 (음수 = 순유출)"}
       ],
@@ -101,7 +100,7 @@
   },
   "jeonse_calibration": {
     "_note": "2026-04-02 실측 460k행 전수 분석. 원래 70% 기준은 서울 상급지 적용 불가 — 강남3구 P80이 50.9%에 불과.",
-    "_method": "Adaptive Floor = MAX(regional_P20 x 1.15, regional_avg x 0.80)",
+    "_method": "Adaptive Floor = MAX(regional_P20 × 1.15, regional_avg × 0.80)",
     "analysis_date": "2026-04-02",
     "rows_analyzed": 6183,
     "original_floor_invalidated": {
@@ -132,7 +131,7 @@
       "경기": 0.65,
       "default": 0.65
     },
-    "key_insight": "강남3구의 낙은 전세가율은 위험 신호가 아니라 매매가 선행 상승 지표(투자 수요 유입). 절대값(70%) → 지역 P20 대비 상대 기준으로 전환."
+    "key_insight": "강남3구의 낮은 전세가율은 위험 신호가 아니라 매매가 선행 상승 지표(투자 수요 유입). 절대값(70%) → 지역 P20 대비 상대 기준으로 전환."
   },
   "indicator_mapping": {
     "jeonse_ratio": {
@@ -143,7 +142,7 @@
       "safety_floor_legacy": 0.70,
       "safety_floor_adaptive": "jeonse_calibration.adaptive_safety_floor[sgg] 참조",
       "confidence_deduction_if_fallback": 0.15,
-      "fallback": "REGION_APT_RICHGO_MARKET_PRICE_M_H at sgg level",
+      "fallback": "REGION_APT_RICHGO_MARKET_PRICE_M_H.MEAN_JEONSE_PRICE / MEAN_MEME_PRICE at sgg level",
       "sample_range": "0.2652 ~ 0.9101 (2026-03 실측)"
     },
     "pir": {
@@ -154,42 +153,59 @@
       "undervalue_threshold_ratio": 0.85,
       "confidence_deduction_if_sgg_avg": 0.20,
       "income_constants_man_won": {
-        "서울": 5500, "경기": 4800, "인천": 4500, "부산": 4200, "default": 4500
+        "서울": 5500,
+        "경기": 4800,
+        "인천": 4500,
+        "부산": 4200,
+        "default": 4500
       },
-      "note": "No income data in HACKATHON_2026 schema. KOSIS 2024 regional avg."
+      "note": "No income data in HACKATHON_2026 schema. Regional income constants based on KOSIS 2024 avg."
     },
     "supply_score": {
-      "formula": "R = TOTAL_HOUSEHOLDS_current / TOTAL_HOUSEHOLDS_prev_year",
-      "table": "REGION_APT_RICHGO_MARKET_PRICE_M_H",
-      "unit": "ratio R",
+      "formula": "R = TOTAL_HOUSEHOLDS_current / (TOTAL_HOUSEHOLDS_prev_year * supply_demand_ratio_factor)",
+      "table": "REGION_APT_RICHGO_MARKET_PRICE_M_H + REGION_POPULATION_MOVEMENT",
+      "columns": ["TOTAL_HOUSEHOLDS", "POPULATION"],
+      "unit": "ratio R (dimensionless)",
       "thresholds": {
         "opportunity_ceiling": 0.8,
+        "linear_penalty_start": 0.8,
         "linear_penalty_end": 1.2,
-        "steep_penalty_end": 1.4
+        "steep_penalty_end": 1.4,
+        "danger_floor": 1.4
       },
-      "score_range": "0~100",
+      "score_range": "0 ~ 100",
       "confidence_deduction_if_radius_over_5km": 0.10
     },
     "news_sentiment": {
       "formula": "AVG(SNOWFLAKE.CORTEX.SENTIMENT(headline)) * 5",
-      "return_type": "FLOAT (-1~+1, scaled -5~+5)",
+      "cortex_function": "SNOWFLAKE.CORTEX.SENTIMENT",
+      "return_type": "FLOAT (-1 to +1, scaled to -5 to +5)",
       "ttl_hours": 168,
       "min_sample": 3,
+      "confidence_deduction_if_below_min_sample": 0.15,
+      "confidence_deduction_if_agreement_below_threshold": 0.10,
+      "agreement_threshold": 0.7,
       "confirmed_sql_pattern": "SELECT SNOWFLAKE.CORTEX.SENTIMENT('text') AS s",
-      "avoid": "TRY_CAST(AI_SENTIMENT(...) AS DOUBLE) -- __round__ error",
-      "test_result": {"input": "금리 인하 호재", "raw": 0.09375, "scaled": 0.46875}
+      "test_result": {"input": "금리 인하로 부동산 시장이 활성화될 전망입니다.", "output": 0.09375}
     },
     "s_alpha": {
-      "formula": "0.30*S_supply + 0.25*S_pir + 0.20*S_jeonse + 0.15*S_news + 0.10*S_commute",
+      "formula": "W_supply*S_supply + W_pir*S_pir + W_jeonse*S_jeonse + W_news*S_news + W_commute*S_commute",
+      "weights": {
+        "W_supply": 0.30,
+        "W_pir": 0.25,
+        "W_jeonse": 0.20,
+        "W_news": 0.15,
+        "W_commute": 0.10
+      },
       "education_multiplier": 1.5,
-      "education_proxy": "LIVING_SCORE >= 90",
+      "education_proxy": "LIVING_SCORE >= 90 (from DANJI_APT_INFO)",
       "execution_threshold": 80,
       "unit": "points (0~100)"
     }
   },
   "null_analysis": {
     "DANJI_APT_INFO.CONSTRUCTOR_RANK": {
-      "note": "Some rows NULL -- use None-safe logic",
+      "note": "Some rows have NULL — use None-safe logic",
       "observed_in_sample": true
     },
     "DANJI_APT_RICHGO_MARKET_PRICE_M_H.MEAN_JEONSE_PRICE": {
@@ -199,7 +215,7 @@
   },
   "cortex_error_prevention": {
     "confirmed_working": "SELECT SNOWFLAKE.CORTEX.SENTIMENT('text') AS s",
-    "avoid": "TRY_CAST(AI_SENTIMENT(...) AS DOUBLE) -- __round__ error risk",
-    "scale_to_spec": "raw_float * 5.0 in Python (not SQL)"
+    "avoid": "TRY_CAST(AI_SENTIMENT(...) AS DOUBLE) — legacy function, __round__ error risk",
+    "scale_to_spec": "raw_float * 5.0 in Python (not SQL) to avoid type coercion issues"
   }
 }

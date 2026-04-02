@@ -8,36 +8,62 @@ Responsibilities:
 import os
 from src.utils.snowflake_client import SnowflakeClient
 
-# ── PIR Band constants ──────────────────────────────────────────────────────
-PIR_BAND_MONTHS        = 60
-PIR_BAND_MIN_MONTHS    = 12
-PIR_RELATIVE_LOW       = 0.85
-PIR_RELATIVE_HIGH      = 1.15
+# ── PIR Band constants ───────────────────────────────────────────────────────
+PIR_BAND_MONTHS        = 60    # 5년 시계열
+PIR_BAND_MIN_MONTHS    = 12    # SGG 데이터 최소 기준 (미달 시 SD Fallback)
+PIR_RELATIVE_LOW       = 0.85  # 이하 → '역대급 저평가' +15점
+PIR_RELATIVE_HIGH      = 1.15  # 초과 → '고점 경고' -10점
 PIR_BAND_UNDERVALUE_BONUS   = 15.0
 PIR_BAND_OVERVALUE_PENALTY  = 10.0
 
-# ── Regional income constants (KOSIS 2024 avg, 만원/year) ──────────────────────
+# ── Regional income constants (KOSIS 2024 avg, 만원/year) ────────────────────
+# Shared with core.engine for compute_pir — source of truth here.
 REGIONAL_INCOME_MAN_WON: dict = {
-    "서울": 5500.0, "경기": 4800.0, "인천": 4500.0,
-    "부산": 4200.0, "대구": 4100.0, "광주": 4000.0,
-    "대전": 4100.0, "울산": 4600.0, "세종": 5000.0,
+    "서울": 5500.0,
+    "경기": 4800.0,
+    "인천": 4500.0,
+    "부산": 4200.0,
+    "대구": 4100.0,
+    "광주": 4000.0,
+    "대전": 4100.0,
+    "울산": 4600.0,
+    "세종": 5000.0,
     "default": 4500.0,
 }
 
 
 class PIRBandAnalyzer:
+    """
+    5년 PIR 밴드 분석기.
+
+    Usage:
+        analyzer = PIRBandAnalyzer(client)
+        avg, fallback = analyzer.fetch_pir_band('송파구', '서울')
+        idx, adj, label = PIRBandAnalyzer.compute_adjustment(current_pir, avg)
+    """
+
     def __init__(self, client: SnowflakeClient):
         self.client = client
 
     def fetch_pir_band(self, sgg: str, sd: str) -> tuple:
+        """
+        SGG 60개월 PIR 평균 산출.
+        SGG 데이터가 PIR_BAND_MIN_MONTHS 미만이면 SD 전체 평균으로 자동 Fallback.
+
+        Returns: (pir_5yr_avg | None, used_fallback: bool)
+        """
         annual_income = REGIONAL_INCOME_MAN_WON.get(sd, REGIONAL_INCOME_MAN_WON["default"])
+
         rows = self.client.fetch_region_price(sgg, months=PIR_BAND_MONTHS)
         used_fallback = False
+
         if len(rows) < PIR_BAND_MIN_MONTHS:
             rows = self.client.fetch_region_price_sd(sd, months=PIR_BAND_MONTHS)
             used_fallback = True
+
         if not rows:
             return None, used_fallback
+
         pir_values = [
             r["mean_meme_price"] / annual_income
             for r in rows
@@ -45,13 +71,24 @@ class PIRBandAnalyzer:
         ]
         if not pir_values:
             return None, used_fallback
+
         return round(sum(pir_values) / len(pir_values), 2), used_fallback
 
     @staticmethod
     def compute_adjustment(current_pir: float, pir_5yr_avg: float) -> tuple:
+        """
+        PIR 상대 지수 산출 → S_alpha 보정치 반환.
+
+        Returns: (pir_relative_index, s_alpha_adjustment, label)
+          - relative_index < 0.85 → +15점  ('역대급 저평가')
+          - relative_index > 1.15 → -10점  ('고점 경고')
+          - otherwise             →   0점  ('적정 구간')
+        """
         if not pir_5yr_avg or pir_5yr_avg == 0:
             return 1.0, 0.0, "N/A"
+
         idx = round(current_pir / pir_5yr_avg, 4)
+
         if idx < PIR_RELATIVE_LOW:
             return idx, PIR_BAND_UNDERVALUE_BONUS, "역대급 저평가"
         elif idx > PIR_RELATIVE_HIGH:

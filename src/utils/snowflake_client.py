@@ -14,7 +14,7 @@ class SnowflakeClient:
     def _cur(self):
         return self.conn.cursor()
 
-    # ── Danji (complex) level ──────────────────────────────────────────
+    # ── Danji (complex) level ────────────────────────────────────────────────
 
     def fetch_danji_info(self, danji_id: str) -> dict:
         """DANJI_APT_INFO — single complex metadata row."""
@@ -55,7 +55,7 @@ class SnowflakeClient:
                 "meme_cap_price"]
         return [dict(zip(cols, r)) for r in rows]
 
-    # ── Region level ─────────────────────────────────────────────────────
+    # ── Region level ─────────────────────────────────────────────────────────
 
     def fetch_region_price(self, sgg: str, months: int = 12) -> list:
         """REGION_APT_RICHGO_MARKET_PRICE_M_H — SGG level."""

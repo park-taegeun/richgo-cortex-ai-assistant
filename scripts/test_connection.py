@@ -1,51 +1,68 @@
 """
-Richgo-Cortex AI Assistant — Snowflake Connection & Engine Integration Test
+Richgo-Cortex AI Assistant — Snowflake Connection Test Script
+Mission 1: 연동 테스트 및 RICHGO_KR.HACKATHON_2026 스키마 검증
 
 Usage:
-    1. cp .env.example .env  # fill in credentials
+    1. cp .env.example .env  (and fill in your credentials)
     2. python scripts/test_connection.py
 """
-import os, sys, time
+
+import os
+import sys
+import time
 from dotenv import load_dotenv
+
 load_dotenv()
 
-REQUIRED = [
-    "SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD",
-    "SNOWFLAKE_WAREHOUSE", "SNOWFLAKE_DATABASE", "SNOWFLAKE_SCHEMA",
+# ── 1. 환경변수 검증 ──────────────────────────────────────────────────────────
+REQUIRED_ENV_VARS = [
+    "SNOWFLAKE_ACCOUNT",
+    "SNOWFLAKE_USER",
+    "SNOWFLAKE_PASSWORD",
+    "SNOWFLAKE_WAREHOUSE",
+    "SNOWFLAKE_DATABASE",
+    "SNOWFLAKE_SCHEMA",
 ]
-missing = [v for v in REQUIRED if not os.getenv(v)]
+
+missing = [v for v in REQUIRED_ENV_VARS if not os.getenv(v)]
 if missing:
-    print(f"[ERROR] Missing env vars: {missing}")
-    print("  -> Copy .env.example to .env and fill in Snowflake credentials.")
+    print(f"[ERROR] Missing environment variables: {missing}")
+    print("  → Copy .env.example to .env and fill in your Snowflake credentials.")
     sys.exit(1)
 
 try:
     import snowflake.connector
 except ImportError:
     print("[ERROR] snowflake-connector-python not installed.")
-    print("  -> Run: pip install snowflake-connector-python")
+    print("  → Run: pip install snowflake-connector-python")
     sys.exit(1)
 
+
+# ── 2. 연결 ──────────────────────────────────────────────────────────────────
 print("\n[1/4] Connecting to Snowflake...")
 start = time.time()
+
 try:
     conn = snowflake.connector.connect(
-        account   = os.getenv("SNOWFLAKE_ACCOUNT"),
-        user      = os.getenv("SNOWFLAKE_USER"),
-        password  = os.getenv("SNOWFLAKE_PASSWORD"),
-        role      = os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
-        warehouse = os.getenv("SNOWFLAKE_WAREHOUSE"),
-        database  = os.getenv("SNOWFLAKE_DATABASE"),
-        schema    = os.getenv("SNOWFLAKE_SCHEMA"),
+        account=os.getenv("SNOWFLAKE_ACCOUNT"),
+        user=os.getenv("SNOWFLAKE_USER"),
+        password=os.getenv("SNOWFLAKE_PASSWORD"),
+        role=os.getenv("SNOWFLAKE_ROLE", "ACCOUNTADMIN"),
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
+        database=os.getenv("SNOWFLAKE_DATABASE"),
+        schema=os.getenv("SNOWFLAKE_SCHEMA"),
     )
-    print(f"    Connected in {time.time()-start:.2f}s")
+    elapsed = time.time() - start
+    print(f"    ✓ Connected in {elapsed:.2f}s")
 except Exception as e:
-    print(f"    Connection failed: {e}")
+    print(f"    ✗ Connection failed: {e}")
     sys.exit(1)
 
 cur = conn.cursor()
 
-print("\n[2/4] Schema tables (HACKATHON_2026):")
+
+# ── 3. HACKATHON_2026 스키마 테이블 목록 조회 ─────────────────────────────────
+print("\n[2/4] Listing tables in RICHGO_KR.HACKATHON_2026...")
 try:
     cur.execute("""
         SELECT table_name, row_count, bytes
@@ -53,37 +70,92 @@ try:
         WHERE table_schema = 'HACKATHON_2026'
         ORDER BY table_name
     """)
-    print(f"    {'TABLE':<52} {'ROWS':>10} {'MB':>8}")
-    print("    " + "-" * 72)
-    for name, row_count, size_bytes in cur.fetchall():
-        mb = round((size_bytes or 0) / 1024 / 1024, 2)
-        print(f"    {name:<52} {(row_count or 0):>10,} {mb:>8.2f}")
+    rows = cur.fetchall()
+    if rows:
+        print(f"\n    {'TABLE NAME':<50} {'ROWS':>12} {'SIZE(MB)':>10}")
+        print("    " + "-" * 74)
+        for name, row_count, size_bytes in rows:
+            mb = round((size_bytes or 0) / 1024 / 1024, 2)
+            print(f"    {name:<50} {str(row_count or 0):>12} {mb:>10.2f}")
+    else:
+        print("    ⚠ No tables found. Verify schema name and permissions.")
 except Exception as e:
-    print(f"    Query failed: {e}")
+    print(f"    ✗ Query failed: {e}")
 
-print("\n[3/4] Cortex AI availability:")
+
+# ── 4. 모델 C+ 핵심 컬럼 존재 여부 검증 ──────────────────────────────────────
+print("\n[3/4] Validating Model C+ required columns...")
+
+# 명세서에서 요구하는 핵심 컬럼 목록 (테이블명은 실제 스키마 확인 후 수정)
+REQUIRED_COLUMNS = {
+    # table_name (예상): [required columns]
+    # 실제 테이블명은 위 조회 결과로 확인 후 채워야 함
+    # 아래는 명세서 기반 예상 매핑
+    "APARTMENT": ["complex_id", "complex_name", "sigungu_code", "latitude", "longitude"],
+    "PRICE": ["complex_id", "trade_price", "jeonse_ratio", "ai_forecast_price", "pir"],
+    "SUPPLY": ["sigungu_code", "supply_qty_3yr", "population"],
+}
+
 try:
     cur.execute("""
-        SELECT SNOWFLAKE.CORTEX.SENTIMENT('금리 인하로 부동산 시장이 활성화될 전망입니다.') AS s
+        SELECT table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'HACKATHON_2026'
+        ORDER BY table_name, ordinal_position
     """)
-    raw = float(cur.fetchone()[0])
-    print(f"    CORTEX.SENTIMENT: raw={raw:.4f}, scaled(x5)={round(raw*5, 4)}")
-except Exception as e:
-    print(f"    Cortex unavailable: {e}")
+    all_cols = cur.fetchall()
 
-print("\n[4/4] RichgoCortexEngine quick test (a7qzYub):")
+    actual = {}
+    for table, col in all_cols:
+        actual.setdefault(table, []).append(col.lower())
+
+    for expected_table, expected_cols in REQUIRED_COLUMNS.items():
+        # 유사한 실제 테이블명 찾기 (부분 매칭)
+        matched_tables = [t for t in actual if expected_table.lower() in t.lower()]
+        if matched_tables:
+            real_table = matched_tables[0]
+            missing_cols = [c for c in expected_cols if c.lower() not in actual[real_table]]
+            if missing_cols:
+                print(f"    ⚠ [{real_table}] missing columns: {missing_cols}")
+                print(f"      → Fallback logic will be required for Model C+")
+            else:
+                print(f"    ✓ [{real_table}] all required columns present")
+        else:
+            print(f"    ⚠ No table matching '{expected_table}' found — manual mapping needed")
+
+except Exception as e:
+    print(f"    ✗ Column validation failed: {e}")
+
+
+# ── 5. Cortex AI 함수 가용성 확인 ─────────────────────────────────────────────
+print("\n[4/4] Checking Snowflake Cortex AI availability...")
 try:
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from src.engine import RichgoCortexEngine
-    engine = RichgoCortexEngine(conn)
-    r = engine.analyze('a7qzYub')
-    print(f"    {r['danji_name']} ({r['sgg']})")
-    print(f"    S_alpha={r['s_alpha']} | {r['confidence_pct']}% ({r['confidence_label']})")
-    print(f"    전세가율={r['jeonse_ratio']} | 지역바닥={r['jeonse_floor']} | OK={r['jeonse_safety_ok']}")
-    print(f"    PIR={r['pir']} | Supply={r['supply_score']} | Trigger={r['execution_trigger']}")
-except Exception as e:
-    print(f"    Engine test failed: {e}")
+    cur.execute("""
+        SELECT SNOWFLAKE.CORTEX.AI_SENTIMENT('금리 인하로 부동산 시장이 활성화될 전망입니다.')
+        AS sentiment_test
+    """)
+    result = cur.fetchone()
+    score = result[0]
+    scaled = round(score * 5, 2)
+    print(f"    ✓ AI_SENTIMENT available")
+    print(f"      Test sentence sentiment: raw={score:.4f}, scaled(×5)={scaled}")
 
+    if scaled > 0:
+        print(f"      → Positive sentiment detected ✓ (expected for '금리 인하' news)")
+    else:
+        print(f"      → ⚠ Unexpected negative score — Korean NLP may need ensemble fallback")
+
+except Exception as e:
+    print(f"    ✗ Cortex AI_SENTIMENT unavailable: {e}")
+    print("      → Rule-based keyword scoring fallback REQUIRED")
+
+
+# ── 완료 ─────────────────────────────────────────────────────────────────────
 cur.close()
 conn.close()
-print("\n" + "=" * 60 + "\n  Complete.\n" + "=" * 60 + "\n")
+
+print("\n" + "=" * 60)
+print("  Connection test complete.")
+print("  Next step: Review table names above and update")
+print("  src/config.py with actual table mapping.")
+print("=" * 60 + "\n")
