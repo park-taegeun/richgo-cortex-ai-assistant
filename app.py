@@ -187,6 +187,7 @@ def get_all_danji_list(_engine):
     if not _engine:
         return []
     try:
+        # 전국구 지역 개방형 쿼리 유지 (SD 필터링 없음)
         query = """
         SELECT DANJI_ID, SD, SGG, DANJI 
         FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO 
