@@ -166,112 +166,25 @@ section[data-testid="stSidebar"] {{
 ALPHA_TRIGGER_DELTA = 20
 ALPHA_TRIGGER_MIN   = 80
 
-# ── Demo Data ─────────────────────────────────────────────────────────────────
-# Calibrated from 460k-row Snowflake analysis (2026-04-02)
-DEMO_DATA = {
-    "헬리오시티 (송파구)": {
-        "danji_id":               "demo_helios",
-        "danji_name":             "헬리오시티",
-        "sd": "서울", "sgg": "송파구", "emd": "가락동",
-        "s_alpha":                58,
-        "s_alpha_before_band":    57.3,
-        "pir_band_adjustment":    0.0,
-        "confidence_pct":         65.0,
-        "confidence_label":       "Medium",
-        "execution_trigger":      False,
-        "jeonse_ratio":           0.43,
-        "jeonse_floor":           0.41,
-        "jeonse_safety_ok":       True,
-        "pir":                    49.09,
-        "pir_5yr_avg":            52.50,
-        "pir_relative_index":     0.935,
-        "pir_band_label":         "적정 구간",
-        "pir_undervalue_ok":      False,
-        "supply_score_raw":       68.5,
-        "supply_score_final":     67.1,
-        "spillover_detail": {
-            "own_sgg": "송파구", "own_score": 68.5,
-            "adjacent_sggs": ["강동구"],
-            "adjacent_scores": {"강동구": 63.2},
-            "adjacent_avg": 63.2, "final_score": 67.1,
-            "spillover_applied": True,
-        },
-        "sentiment_score":        1.8,
-        "living_score":           82,
-        "is_chobuma":             False,
-        "latest_meme_price_man_won":   270000,
-        "latest_jeonse_price_man_won": 116100,
-        "analysis_date":          "2026-04-02",
-    },
-    "래미안 원베일리 (서초구)": {
-        "danji_id":               "demo_onebaely",
-        "danji_name":             "래미안 원베일리",
-        "sd": "서울", "sgg": "서초구", "emd": "반포동",
-        "s_alpha":                84,
-        "s_alpha_before_band":    56.2,
-        "pir_band_adjustment":    15.0,
-        "confidence_pct":         70.0,
-        "confidence_label":       "Medium",
-        "execution_trigger":      True,
-        "jeonse_ratio":           0.38,
-        "jeonse_floor":           0.38,
-        "jeonse_safety_ok":       True,
-        "pir":                    72.73,
-        "pir_5yr_avg":            86.36,
-        "pir_relative_index":     0.842,
-        "pir_band_label":         "역대급 저평가",
-        "pir_undervalue_ok":      True,
-        "supply_score_raw":       75.0,
-        "supply_score_final":     72.5,
-        "spillover_detail": {
-            "own_sgg": "서초구", "own_score": 75.0,
-            "adjacent_sggs": ["강남구"],
-            "adjacent_scores": {"강남구": 65.0},
-            "adjacent_avg": 65.0, "final_score": 72.5,
-            "spillover_applied": True,
-        },
-        "sentiment_score":        3.2,
-        "living_score":           96,
-        "is_chobuma":             True,
-        "latest_meme_price_man_won":   400000,
-        "latest_jeonse_price_man_won": 152000,
-        "analysis_date":          "2026-04-02",
-    },
-    "아크로리버파크 (서초구)": {
-        "danji_id":               "demo_acro",
-        "danji_name":             "아크로리버파크",
-        "sd": "서울", "sgg": "서초구", "emd": "반포동",
-        "s_alpha":                79,
-        "s_alpha_before_band":    64.1,
-        "pir_band_adjustment":    15.0,
-        "confidence_pct":         72.0,
-        "confidence_label":       "Medium",
-        "execution_trigger":      False,
-        "jeonse_ratio":           0.37,
-        "jeonse_floor":           0.38,
-        "jeonse_safety_ok":       False,
-        "pir":                    68.18,
-        "pir_5yr_avg":            82.5,
-        "pir_relative_index":     0.827,
-        "pir_band_label":         "역대급 저평가",
-        "pir_undervalue_ok":      True,
-        "supply_score_raw":       72.0,
-        "supply_score_final":     70.1,
-        "spillover_detail": {
-            "own_sgg": "서초구", "own_score": 72.0,
-            "adjacent_sggs": ["강남구"],
-            "adjacent_scores": {"강남구": 65.0},
-            "adjacent_avg": 65.0, "final_score": 70.1,
-            "spillover_applied": True,
-        },
-        "sentiment_score":        2.8,
-        "living_score":           94,
-        "is_chobuma":             True,
-        "latest_meme_price_man_won":   360000,
-        "latest_jeonse_price_man_won": 133200,
-        "analysis_date":          "2026-04-02",
-    },
-}
+# ── Dynamic Danji List Loading ────────────────────────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_all_danji_list(_engine):
+    """Snowflake DB 전 지역 단지 실시간 동기화."""
+    if not _engine:
+        return []
+    try:
+        query = """
+        SELECT DANJI_ID, DANJI_NAME, ADDR_GU 
+        FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO 
+        ORDER BY DANJI_NAME ASC
+        """
+        cur = _engine._client.conn.cursor()
+        cur.execute(query)
+        rows = cur.fetchall()
+        return [{"DANJI_ID": r[0], "DANJI_NAME": r[1], "ADDR_GU": r[2]} for r in rows]
+    except Exception as e:
+        st.error(f"단지 목록 동기화 실패: {e}")
+        return []
 
 
 # ── Snowflake Connection ──────────────────────────────────────────────────────
@@ -542,30 +455,39 @@ with st.sidebar:
         mode = "demo"
 
     st.markdown("---")
-    st.markdown("<div class='section-header'>단지 선택</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>전 지역 단지 검색</div>", unsafe_allow_html=True)
 
-    demo_keys = list(DEMO_DATA.keys())
-    selected_current = st.selectbox("📍 현재 단지", demo_keys, index=0)
-    selected_target  = st.selectbox("🎯 목표 단지", demo_keys, index=1)
+    danji_list = get_all_danji_list(engine)
+    if not danji_list:
+        st.warning("⚠️ 데이터 동기화 대기 중... Snowflake 연결을 확인하세요.")
+        st.stop()
 
-    is_same_danji = selected_current == selected_target
+    selected_current = st.selectbox(
+        "📍 현재 단지", 
+        options=danji_list, 
+        format_func=lambda x: f"{x['DANJI_NAME']} ({x['ADDR_GU']})",
+        index=0
+    )
+    selected_target  = st.selectbox(
+        "🎯 목표 단지", 
+        options=danji_list, 
+        format_func=lambda x: f"{x['DANJI_NAME']} ({x['ADDR_GU']})",
+        index=1 if len(danji_list) > 1 else 0
+    )
 
-    if mode == "live":
-        st.markdown("---")
-        st.markdown("<div class='section-header'>직접 입력</div>", unsafe_allow_html=True)
-        custom_id = st.text_input("단지 ID (DANJI_ID)", placeholder="예: a7qzYub")
+    is_same_danji = selected_current['DANJI_ID'] == selected_target['DANJI_ID']
+
+    if is_same_danji:
+        st.warning("⚠️ 현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
         
-        if is_same_danji:
-            st.warning("⚠️ 현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
-            
-        if st.button("🔍 분석 실행", use_container_width=True, disabled=is_same_danji) and custom_id:
-            with st.spinner("Snowflake 쿼리 중…"):
-                try:
-                    live_result = engine.analyze(custom_id)
-                    st.session_state["live_result"] = live_result
-                    st.success("분석 완료!")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+    if st.button("🔍 통합 분석 실행", use_container_width=True, disabled=is_same_danji):
+        with st.spinner("Snowflake 라이브 쿼리 중..."):
+            try:
+                st.session_state["cur_data"] = engine.analyze(selected_current["DANJI_ID"])
+                st.session_state["tgt_data"] = engine.analyze(selected_target["DANJI_ID"])
+                st.success("분석 완료! 관제탑을 갱신합니다.")
+            except Exception as e:
+                st.error(f"오류 발생: {e}")
 
     st.markdown("---")
     st.markdown(
@@ -579,13 +501,13 @@ with st.sidebar:
 
 
 # ── Data Loading ──────────────────────────────────────────────────────────────
-if mode == "live" and "live_result" in st.session_state:
-    result = st.session_state["live_result"]
+if "cur_data" in st.session_state and "tgt_data" in st.session_state:
+    cur_data = st.session_state["cur_data"]
+    tgt_data = st.session_state["tgt_data"]
 else:
-    result = DEMO_DATA[selected_current]
-
-cur_data = result
-tgt_data = DEMO_DATA[selected_target]
+    st.info("👆 좌측 사이드바에서 단지를 검색하고 **[🔍 통합 분석 실행]** 버튼을 클릭하십시오.")
+    st.stop()
+# Variables are correctly loaded from session state above.
 
 
 # ── Header ────────────────────────────────────────────────────────────────────
