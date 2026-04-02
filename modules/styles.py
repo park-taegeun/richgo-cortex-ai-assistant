@@ -443,13 +443,16 @@ def render_key_metrics(cur_data: dict) -> None:
     st.markdown("<div class='section-header'>핵심 지표</div>", unsafe_allow_html=True)
     m1, m2, m3, m4 = st.columns(4)
 
-    jrate = cur_data["jeonse_ratio"]
-    jcls  = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
+    jrate      = cur_data["jeonse_ratio"]
+    jfloor_pct = cur_data["jeonse_floor"] * 100
+    jcls       = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
     m1.markdown(
-        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>"
+        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다. "
+        f"현재 전세가율이 역사적 안전 마진보다 높을수록 하락장에서의 가격 방어력이 강해집니다.'>"
         f"하락장 방어력 (전세가율) <span style='font-size:0.8em;color:#888;'>(▲높을수록 안전)</span></div>"
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
-        f"<div style='font-size:11px;color:#445566;'>바닥 {cur_data['jeonse_floor']*100:.0f}% "
+        f"<div style='font-size:11px;color:#445566;'>"
+        f"역사적 안전 마진: {jfloor_pct:.0f}% "
         f"{'✅' if cur_data['jeonse_safety_ok'] else '⚠️'}</div>",
         unsafe_allow_html=True,
     )
@@ -460,10 +463,13 @@ def render_key_metrics(cur_data: dict) -> None:
         "metric-warn" if cur_data["pir_relative_index"] < 1.15 else "metric-bad"
     )
     m2.markdown(
-        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다.'>"
+        f"<div class='metric-label' "
+        f"title='이 수치는 개인 소득이 아닌, 통계청 발표 서울 가구 중위 소득을 기준으로 한 "
+        f"단지의 절대적 가격 높낮이입니다. 낮을수록 현재 가격이 소득 대비 저평가 상태입니다.'>"
         f"내 월급으로 이 집을 사려면 (연수) <span style='font-size:0.8em;color:#888;'>(▼낮을수록 유리)</span></div>"
         f"<div class='metric-value {pir_cls}'>{pir:.1f}yr</div>"
-        f"<div style='font-size:11px;color:#445566;'>5yr avg {pir_avg:.1f} | {cur_data['pir_band_label']}</div>",
+        f"<div style='font-size:11px;color:#445566;'>"
+        f"서울 평균 소득 기준 &nbsp;|&nbsp; 5yr avg {pir_avg:.1f} | {cur_data['pir_band_label']}</div>",
         unsafe_allow_html=True,
     )
 
@@ -501,8 +507,13 @@ def render_key_metrics(cur_data: dict) -> None:
     sent_cls = "metric-ok" if sent > 0 else "metric-bad"
     m6.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
-        f"<div class='metric-label'>Cortex 뉴스 심리</div>"
+        f"<div class='metric-label' "
+        f"title='Snowflake Cortex LLM이 최신 뉴스 1,000건을 실시간 분석한 시장의 감정 온도입니다. "
+        f"+값은 긍정적, −값은 부정적 시장 심리를 의미합니다.'>"
+        f"Snowflake Cortex AI 뉴스 심리</div>"
         f"<div class='metric-value {sent_cls}'>{sent:+.1f}pt</div>"
+        f"<div style='font-size:10px;color:#445566;margin-top:4px;'>"
+        f"Cortex LLM · 뉴스 1,000건 실시간 분석</div>"
         f"</div>",
         unsafe_allow_html=True,
     )

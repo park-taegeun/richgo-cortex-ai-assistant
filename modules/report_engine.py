@@ -60,7 +60,8 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
         message = (
             f"자본 효율성을 극대화한 <b style='color:{_MINT}'>자산 유동화형 상급지 이동</b> 전략입니다. "
             f"현 단지 대비 {delta_val:+d}pt의 자산 가치 점프가 예상됩니다.<br/>"
-            f"목표 단지의 PIR은 {pir_val:.1f}년으로 방어력을 갖추었으며, "
+            f"목표 단지의 PIR은 <b>{pir_val:.1f}년</b><span style='font-size:0.85em;color:#8892A4;'>"
+            f" (서울 평균 소득 기준)</span>으로 방어력을 갖추었으며, "
             f"인근 변수 신호({supply_signal}) 측면에서도 전략적 우위를 점합니다."
         )
         color = _MINT
@@ -70,7 +71,8 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
         message = (
             f"<b style='color:{_MINT}'>역사적 저평가 구간</b>입니다. "
             f"현 단지 대비 {delta_val:+d}pt의 높은 자산 가치 상승이 예상되는 골든타임입니다.<br/>"
-            f"목표 단지의 PIR이 {pir_val:.1f}년으로 서울 평균에 비추어 유리하며, "
+            f"목표 단지의 PIR이 <b>{pir_val:.1f}년</b><span style='font-size:0.85em;color:#8892A4;'>"
+            f" (서울 평균 소득 기준)</span>으로 서울 평균에 비추어 유리하며, "
             f"공급 신호가 {supply_signal}하여 하락 방어력이 탁월합니다."
         )
         color = _MINT
@@ -81,7 +83,9 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
             f"내재 가치는 높으나 <b style='color:{_YELLOW_NEO}'>전세가율({ai_jeonse*100:.1f}%) "
             f"뒷받침이 약해 하락 방어력이 주의됩니다.</b><br/>"
             f"자산 점프 폭은 {delta_val:+d}pt로 유의미하나, "
-            f"자금 유동성 확보 후 실거주 목적으로 진입 여건을 활용하십시오."
+            f"자금 유동성 확보 후 실거주 목적으로 진입 여건을 활용하십시오. "
+            f"<span style='font-size:0.85em;color:#8892A4;'>"
+            f"PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
         )
         color = _YELLOW_NEO
 
@@ -90,7 +94,9 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
         message = (
             f"<b style='color:{_RED_NEO}'>아직은 시장의 불확실성이 큽니다.</b> "
             f"이동에 따른 가치 상승({delta_val:+d}pt) 대비 수급 및 가격 리스크가 선행합니다.<br/>"
-            f"잠시 관망하며 더 나은 매수 기회나 유동성 골든타임을 엿보십시오."
+            f"잠시 관망하며 더 나은 매수 기회나 유동성 골든타임을 엿보십시오. "
+            f"<span style='font-size:0.85em;color:#8892A4;'>"
+            f"PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
         )
         color = _RED_NEO
 
@@ -99,7 +105,9 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
         message = (
             f"단기적으로 안정적인 흐름을 보이고 있습니다(점수: {ai_score}pt).<br/>"
             f"보수적 접근이 권장되며, 전세금({ai_jeonse*100:.1f}%) 레버리지와 "
-            f"PIR 장기 밴드를 예의 주시하십시오."
+            f"PIR 장기 밴드를 예의 주시하십시오. "
+            f"<span style='font-size:0.85em;color:#8892A4;'>"
+            f"현재 PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
         )
         color = _NEUTRAL
 
