@@ -187,11 +187,15 @@ def get_all_danji_list(_engine):
     if not _engine:
         return []
     try:
-        # 전국구 지역 개방형 쿼리 유지 (SD 필터링 없음)
+        # 전국구 지역 개방형 쿼리 유지 (SD 지정 안함) & 시세 존재 단지만 필터링 (INNER JOIN)
         query = """
-        SELECT DANJI_ID, SD, SGG, DANJI 
-        FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO 
-        ORDER BY SD ASC, SGG ASC, DANJI ASC
+        SELECT DISTINCT a.DANJI_ID, a.SD, a.SGG, a.DANJI 
+        FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO a
+        INNER JOIN RICHGO_KR.HACKATHON_2026.DANJI_APT_RICHGO_MARKET_PRICE_M_H b 
+          ON a.DANJI_ID = b.DANJI_ID
+        WHERE b.MEAN_MEME_PRICE IS NOT NULL 
+          AND b.MEAN_JEONSE_PRICE IS NOT NULL
+        ORDER BY a.SD ASC, a.SGG ASC, a.DANJI ASC
         """
         cur = _engine._client.conn.cursor()
         cur.execute(query)
