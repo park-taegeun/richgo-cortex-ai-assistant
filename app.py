@@ -174,9 +174,9 @@ def get_all_danji_list(_engine):
         return []
     try:
         query = """
-        SELECT DANJI_ID, DANJI_NAME, ADDR_GU 
+        SELECT DANJI_ID, DANJI, SGG 
         FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO 
-        ORDER BY DANJI_NAME ASC
+        ORDER BY DANJI ASC
         """
         cur = _engine._client.conn.cursor()
         cur.execute(query)
