@@ -471,7 +471,7 @@ def render_cascading_selector(danji_list: list, prefix: str):
     if sd_key not in st.session_state:
         st.session_state[sd_key] = sd_list[0]
         
-    selected_sd = st.selectbox("시/도", sd_list, key=sd_key)
+    selected_sd = st.selectbox("시/도", sd_list, key=sd_key, help="분석을 원하는 시/도 지역을 선택하세요.")
     
     sgg_list = sorted(list(set([d["SGG"] for d in danji_list if d.get("SD") == selected_sd and d.get("SGG")])))
     if not sgg_list: return None
@@ -479,7 +479,7 @@ def render_cascading_selector(danji_list: list, prefix: str):
     if sgg_key not in st.session_state or st.session_state[sgg_key] not in sgg_list:
         st.session_state[sgg_key] = sgg_list[0]
         
-    selected_sgg = st.selectbox("시/군/구", sgg_list, key=sgg_key)
+    selected_sgg = st.selectbox("시/군/구", sgg_list, key=sgg_key, help="선택한 시/도의 세부 구역을 선택하세요.")
     
     filtered_danji = sorted([d for d in danji_list if d.get("SD") == selected_sd and d.get("SGG") == selected_sgg], key=lambda x: x.get("DANJI_NAME", ""))
     if not filtered_danji: return None
@@ -488,7 +488,8 @@ def render_cascading_selector(danji_list: list, prefix: str):
         "단지명", 
         filtered_danji, 
         format_func=lambda x: x.get("DANJI_NAME", ""),
-        key=danji_key
+        key=danji_key,
+        help="비교 분석할 최종 단지를 선택하세요."
     )
     return selected_danji
 
@@ -508,7 +509,7 @@ with st.sidebar:
         mode = "demo"
 
     st.markdown("---")
-    st.markdown("<div class='section-header'>전 지역 단지 검색</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header' title='지난 5년 동안의 평균을 바탕으로 현재 가격 수준을 진단합니다.'>과거 5년 가격 위치 (회색 밴드는 평균)</div>", unsafe_allow_html=True)
 
     danji_list = get_all_danji_list(engine)
     if not danji_list:
@@ -561,7 +562,7 @@ if "cur_data" in st.session_state and "tgt_data" in st.session_state:
     cur_data = st.session_state["cur_data"]
     tgt_data = st.session_state["tgt_data"]
 else:
-    st.info("좌측 사이드바에서 단지를 검색하고 **[통합 분석 실행]** 버튼을 클릭하십시오.")
+    st.info("**[지능형 부동산 비서 온보딩 가이드]**\n\n1. 좌측 메뉴에서 현재 거주 중인 단지를 선택하세요.\n2. 이동을 희망하는 목표 단지를 선택하세요.\n3. 분석 실행 후 하단의 AI 마스터 전략 리포트를 확인하세요.")
     st.stop()
 # Variables are correctly loaded from session state above.
 
@@ -592,7 +593,7 @@ with col_gauge:
     trigger_html = f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>즉시 실행 트리거 발동</div>" if cur_data['execution_trigger'] else ""
     st.markdown(
         f"<div class='card'>"
-        f"<div class='section-header'>S_alpha 종합 점수</div>"
+        f"<div class='section-header' title='여러 지표를 종합한 상급지 이동 타당도 점수입니다.'>갈아타기 추천 점수</div>"
         f"<div class='score-value {score_class(cur_data['s_alpha'])}'>{cur_data['s_alpha']}</div>"
         f"<div style='margin-top:8px;'>"
         f"<span class='badge {badge_class(conf_lbl)}'>"
@@ -619,7 +620,7 @@ with col_metrics:
     jfloor = cur_data["jeonse_floor"]
     jcls = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
     m1.markdown(
-        f"<div class='metric-label'>전세가율</div>"
+        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>하락장 방어력 (전세가율)</div>"
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
         f"<div style='font-size:11px;color:#445566;'>바닥 {jfloor*100:.0f}% {'' if cur_data['jeonse_safety_ok'] else ''}</div>",
         unsafe_allow_html=True,
@@ -631,7 +632,7 @@ with col_metrics:
     pir_lbl = cur_data["pir_band_label"]
     pir_cls = "metric-ok" if cur_data["pir_undervalue_ok"] else ("metric-warn" if cur_data["pir_relative_index"] < 1.15 else "metric-bad")
     m2.markdown(
-        f"<div class='metric-label'>PIR 지수</div>"
+        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다. 낮을수록 저평가 상태입니다.'>월급 대비 집값 수준</div>"
         f"<div class='metric-value {pir_cls}'>{pir:.1f}yr</div>"
         f"<div style='font-size:11px;color:#445566;'>5yr avg {pir_avg:.1f} | {pir_lbl}</div>",
         unsafe_allow_html=True,
@@ -641,7 +642,7 @@ with col_metrics:
     sup = cur_data["supply_score_final"]
     sup_cls = "metric-ok" if sup >= 70 else ("metric-warn" if sup >= 40 else "metric-bad")
     m3.markdown(
-        f"<div class='metric-label'>공급 점수</div>"
+        f"<div class='metric-label' title='과잉 공급이 인접 지역 매매가에 미치는 위험도를 측정합니다.'>인접 지역 공급 위험</div>"
         f"<div class='metric-value {sup_cls}'>{sup:.1f}pt</div>"
         f"<div style='font-size:11px;color:#445566;'>Raw {cur_data['supply_score_raw']:.1f} | Spillover 적용</div>",
         unsafe_allow_html=True,
@@ -871,7 +872,35 @@ else:
     )
 
 
+# ── AI Master Docent ──────────────────────────────────────────────────────────
+st.markdown("<div class='section-header' title='AI가 분석한 최종 권고 사항입니다.'>AI 마스터의 전략 제안</div>", unsafe_allow_html=True)
+ai_score = tgt_data['s_alpha']
+ai_pir_ok = tgt_data['pir_undervalue_ok']
+ai_jeonse = tgt_data['jeonse_ratio']
+
+if ai_score >= 80 and ai_pir_ok:
+    ai_msg = "역사적 저평가 구간입니다. 상급지 이동의 골든타임입니다."
+    ai_color = MINT
+elif ai_score >= 80 and ai_jeonse < 0.4:
+    ai_msg = "가치는 높으나 전세 수요가 뒷받침되지 않습니다. 실거주 목적으로만 접근하세요."
+    ai_color = YELLOW_NEO
+elif ai_score < 60:
+    ai_msg = "아직은 시장의 불확실성이 큽니다. 잠시 관망하며 기회를 엿보세요."
+    ai_color = RED_NEO
+else:
+    ai_msg = "안정적인 흐름을 보이고 있습니다. 자금 계획에 맞추어 보수적으로 접근하세요."
+    ai_color = "#E8EAF0"
+
+st.markdown(
+    f"<div style='padding:20px; border-left:4px solid {ai_color}; background:{CARD_BG}; border-radius: 4px; margin-top: 16px; margin-bottom: 24px; font-size:15px; color:#E8EAF0; line-height:1.6;'>"
+    f"<b>[AI 분석 결론]</b><br>{ai_msg}"
+    f"</div>",
+    unsafe_allow_html=True,
+)
+
+
 # ── Footer ────────────────────────────────────────────────────────────────────
+
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     f"<div style='text-align:center;color:#2A3445;font-size:11px;padding:16px;'>"
