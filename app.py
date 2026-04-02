@@ -17,24 +17,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Richgo-Cortex AI | 관제탑",
+    page_title="Moving-Up 마스터 | AI 부동산 비서",
     page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 # ── Design Tokens ─────────────────────────────────────────────────────────────
-BG_DARK    = "#0E1117"
+BG_DARK    = "#0A0C10"
 MINT       = "#00FFAA"
 MINT_DIM   = "#00CC88"
 GOLD       = "#FFD700"
 RED_NEO    = "#FF4B4B"
 YELLOW_NEO = "#FFD21E"
 GREEN_NEO  = "#00FF88"
-CARD_BG    = "#161B25"
-BORDER     = "#1E2736"
+CARD_BG    = "#111418"
+BORDER     = "#1E2329"
 
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown(f"""
@@ -46,21 +45,45 @@ html, body, [class*="css"] {{
     font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
 }}
 
-/* ── Shadow Card ── */
+/* ── Animation (Fade-in) ── */
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(10px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+[data-testid="stSidebar"] {{
+    animation: fadeIn 0.6s ease-out 0s both;
+}}
+.stMarkdown, .stPlotlyChart, div[data-testid="stAlert"] {{
+    animation: fadeIn 0.6s ease-out 0.2s both;
+}}
+[data-testid="stVerticalBlock"] > div:nth-child(1) {{ animation-delay: 0.1s; }}
+[data-testid="stVerticalBlock"] > div:nth-child(2) {{ animation-delay: 0.2s; }}
+[data-testid="stVerticalBlock"] > div:nth-child(3) {{ animation-delay: 0.3s; }}
+[data-testid="stVerticalBlock"] > div:nth-child(4) {{ animation-delay: 0.4s; }}
+
+/* ── Button Alignment ── */
+.stButton > button {{
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+}}
+
+/* ── Shadow Card (Glassmorphism) ── */
 .card {{
-    background: #1A1A1A;
-    border: 1px solid #333333;
-    border-radius: 4px;
+    background: rgba(17, 20, 24, 0.7);
+    backdrop-filter: blur(10px);
+    border: 1px solid {BORDER};
+    border-radius: 6px;
     padding: 24px;
     margin-bottom: 16px;
-    box-shadow: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }}
 
 /* ── Alert Styles ── */
 div[data-testid="stAlert"] {{
-    background-color: #1E1E1E !important;
-    border: 1px solid #333333 !important;
-    border-radius: 4px !important;
+    background-color: rgba(17, 20, 24, 0.8) !important;
+    border: 1px solid {BORDER} !important;
+    border-radius: 6px !important;
     color: #E8EAF0 !important;
 }}
 div[data-testid="stAlert"] svg {{
@@ -531,20 +554,20 @@ with st.sidebar:
     if is_same_danji:
         st.warning("현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
         
-    if st.button("통합 분석 실행", use_container_width=True, disabled=is_same_danji):
-        with st.spinner("Snowflake 라이브 쿼리 중..."):
+    if st.button("설정 완료", use_container_width=True, disabled=is_same_danji):
+        with st.spinner("AI가 실거래 데이터를 정밀 분석 중입니다..."):
             try:
                 cur_res = engine.analyze(selected_current["DANJI_ID"])
                 tgt_res = engine.analyze(selected_target["DANJI_ID"])
                 
                 if cur_res is None or tgt_res is None:
-                    st.info("선택하신 단지는 현재 분석에 필요한 시세 데이터가 적재되지 않은 상태입니다. 인근의 다른 단지를 선택하여 분석을 진행해 주십시오.")
+                    st.info("해당 단지의 실거래 데이터 결측이 감지되어, 인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)")
                 else:
                     st.session_state["cur_data"] = cur_res
                     st.session_state["tgt_data"] = tgt_res
                     st.success("설정 완료")
             except Exception:
-                st.info("선택하신 단지는 현재 분석에 필요한 시세 데이터가 적재되지 않은 상태입니다. 인근의 다른 단지를 선택하여 분석을 진행해 주십시오.")
+                st.info("해당 단지의 실거래 데이터 결측이 감지되어, 인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)")
 
     st.markdown("---")
     st.markdown(
@@ -570,8 +593,8 @@ else:
 # ── Header ────────────────────────────────────────────────────────────────────
 st.markdown(
     f"<div style='display:flex;align-items:baseline;gap:16px;margin-bottom:4px;'>"
-    f"<span style='font-size:26px;font-weight:800;color:#E8EAF0;'>관제탑</span>"
-    f"<span style='font-size:13px;color:#445566;font-family:monospace;'>STRATEGIC COMMAND CENTER</span>"
+    f"<span style='font-size:26px;font-weight:800;color:#E8EAF0;'>Moving-Up 마스터</span>"
+    f"<span style='font-size:13px;color:#445566;font-family:monospace;'>AI REAL ESTATE ASSISTANT</span>"
     f"</div>",
     unsafe_allow_html=True,
 )
@@ -592,23 +615,18 @@ with col_gauge:
     conf_lbl = cur_data["confidence_label"]
     trigger_html = f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>즉시 실행 트리거 발동</div>" if cur_data['execution_trigger'] else ""
     st.markdown(
-        f"<div class='card'>"
-        f"<div class='section-header' title='여러 지표를 종합한 상급지 이동 타당도 점수입니다.'>갈아타기 추천 점수</div>"
-        f"<div class='score-value {score_class(cur_data['s_alpha'])}'>{cur_data['s_alpha']}</div>"
-        f"<div style='margin-top:8px;'>"
-        f"<span class='badge {badge_class(conf_lbl)}'>"
-        f"{conf_lbl} &nbsp; {cur_data['confidence_pct']:.0f}%"
-        f"</span>"
-        f"</div>"
+        f"<div class='card' style='height:100%; display:flex; flex-direction:column; justify-content:center;'>"
+        f"<div class='section-header' title='여러 지표를 종합한 상급지 이동 타당도 점수입니다.'>목표 단지 이동 시 종합 가치 점수</div>"
+        f"<div class='score-value {score_class(cur_data['s_alpha'])}' id='main-score'>{cur_data['s_alpha']}</div>"
         f"<div style='color:#445566;font-size:11px;margin-top:12px;'>"
         f"Band 보정 전: {cur_data['s_alpha_before_band']}pt &nbsp;"
         f"PIR 조정: {cur_data['pir_band_adjustment']:+.0f}pt"
         f"</div>"
         f"{trigger_html}"
-        f"</div>",
+        f"</div>"
+        f"<iframe srcdoc=\"<script>const target = {cur_data['s_alpha']}; let current = 0; const stepTime = Math.max(10, Math.floor(1000 / target)); const timer = setInterval(() => {{ current += 1; window.parent.document.querySelectorAll('.score-value').forEach(el => {{ if(el.id === 'main-score') el.innerText = current; }}); if(current >= target) clearInterval(timer); }}, stepTime);</script>\" style=\"display:none;\"></iframe>",
         unsafe_allow_html=True,
     )
-    st.plotly_chart(build_gauge(cur_data["s_alpha"]), use_container_width=True, config={"displayModeBar": False})
 
 with col_metrics:
     st.markdown(f"<div class='card'>", unsafe_allow_html=True)
@@ -619,7 +637,7 @@ with col_metrics:
     jfloor = cur_data["jeonse_floor"]
     jcls = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
     m1.markdown(
-        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>하락장 방어력 (전세가율) <b>(▲높을수록 안전)</b></div>"
+        f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다.'>하락장 방어력 (전세가율) <span style='font-size:0.8em; color:#888;'>(▲높을수록 안전)</span></div>"
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
         f"<div style='font-size:11px;color:#445566;'>바닥 {jfloor*100:.0f}% {'' if cur_data['jeonse_safety_ok'] else ''}</div>",
         unsafe_allow_html=True,
@@ -630,7 +648,7 @@ with col_metrics:
     pir_lbl = cur_data["pir_band_label"]
     pir_cls = "metric-ok" if cur_data["pir_undervalue_ok"] else ("metric-warn" if cur_data["pir_relative_index"] < 1.15 else "metric-bad")
     m2.markdown(
-        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다. 낮을수록 저평가 상태입니다.'>월급 대비 집값 수준 <b>(▼낮을수록 저평가)</b></div>"
+        f"<div class='metric-label' title='월급을 하나도 쓰지 않고 모았을 때 집을 살 수 있는 기간입니다. 낮을수록 저평가 상태입니다.'>내 월급으로 이 집을 사려면 (연수) <span style='font-size:0.8em; color:#888;'>(▼낮을수록 유리)</span></div>"
         f"<div class='metric-value {pir_cls}'>{pir:.1f}yr</div>"
         f"<div style='font-size:11px;color:#445566;'>5yr avg {pir_avg:.1f} | {pir_lbl}</div>",
         unsafe_allow_html=True,
@@ -640,7 +658,7 @@ with col_metrics:
     sup = cur_data["supply_score_final"]
     sup_cls = "metric-ok" if sup >= 70 else ("metric-warn" if sup >= 40 else "metric-bad")
     m3.markdown(
-        f"<div class='metric-label' title='과잉 공급이 인접 지역 매매가에 미치는 위험도를 측정합니다.'>인접 지역 공급 위험</div>"
+        f"<div class='metric-label' title='과잉 공급이 인접 지역 매매가에 미치는 위험도를 측정합니다.'>인근 지역 공급 폭탄 위험도 <span style='font-size:0.8em; color:#888;'>(▼낮을수록 유리)</span></div>"
         f"<div class='metric-value {sup_cls}'>{sup:.1f}pt</div>"
         f"<div style='font-size:11px;color:#445566;'>Raw {cur_data['supply_score_raw']:.1f} | Spillover 적용</div>",
         unsafe_allow_html=True,
@@ -687,22 +705,27 @@ ai_score = tgt_data['s_alpha']
 ai_pir_ok = tgt_data['pir_undervalue_ok']
 ai_jeonse = tgt_data['jeonse_ratio']
 
+pir_val = tgt_data["pir"]
+delta_val = tgt_data["s_alpha"] - cur_data["s_alpha"]
+spill_own = tgt_data["spillover_detail"]["own_score"]
+supply_signal = "안정적" if spill_own >= 60 else "경계"
+
 is_price_efficiency = (cur_data["latest_meme_price_man_won"] > tgt_data["latest_meme_price_man_won"]) and (cur_data["s_alpha"] < tgt_data["s_alpha"])
 
 if is_price_efficiency:
-    ai_msg = "자산 유동화형 상급지 이동: 자본 효율성이 극대화된 전략적 선택입니다."
+    ai_msg = f"자본 효율성을 극대화한 <b style='color:{MINT}'>자산 유동화형 상급지 이동</b> 전략입니다. 현 단지 대비 {delta_val:+d}pt의 자산 가치 점프가 예상됩니다.<br/>목표 단지의 PIR은 {pir_val:.1f}년으로 방어력을 갖추었으며, 인근 변수 신호({supply_signal}) 측면에서도 전략적 우위를 점합니다."
     ai_color = MINT
 elif ai_score >= 80 and ai_pir_ok:
-    ai_msg = "역사적 저평가 구간입니다. 상급지 이동의 골든타임입니다."
+    ai_msg = f"<b style='color:{MINT}'>역사적 저평가 구간</b>입니다. 현 단지 대비 {delta_val:+d}pt의 높은 자산 가치 상승이 예상되는 골든타임입니다.<br/>목표 단지의 PIR이 {pir_val:.1f}년으로 서울 평균에 비추어 유리하며, 공급 신호가 {supply_signal}하여 하락 방어력이 탁월합니다."
     ai_color = MINT
 elif ai_score >= 80 and ai_jeonse < 0.4:
-    ai_msg = "가치는 높으나 전세 수요가 뒷받침되지 않습니다. 실거주 목적으로만 접근하되 유동성 리스크를 헷지하세요."
+    ai_msg = f"내재 가치는 높으나 <b style='color:{YELLOW_NEO}'>전세가율({ai_jeonse*100:.1f}%) 뒷받침이 약해 하락 방어력이 주의됩니다.</b><br/>자산 점프 폭은 {delta_val:+d}pt로 유의미하나, 자금 유동성 확보 후 실거주 목적으로 진입 여건을 활용하십시오."
     ai_color = YELLOW_NEO
 elif ai_score < 60:
-    ai_msg = "아직은 시장의 불확실성이 큽니다. 잠시 관망하며 기회를 엿보세요."
+    ai_msg = f"<b style='color:{RED_NEO}'>아직은 시장의 불확실성이 큽니다.</b> 이동에 따른 가치 상승({delta_val:+d}pt) 대비 수급 및 가격 리스크가 선행합니다.<br/>잠시 관망하며 더 나은 매수 기회나 유동성 골든타임을 엿보십시오."
     ai_color = RED_NEO
 else:
-    ai_msg = "안정적인 흐름을 보이고 있습니다. 자금 계획에 맞추어 보수적으로 접근하세요."
+    ai_msg = f"단기적으로 안정적인 흐름을 보이고 있습니다(점수: {ai_score}pt).<br/>보수적 접근이 권장되며, 전세금({ai_jeonse*100:.1f}%) 레버리지와 PIR 장기 밴드를 예의 주시하십시오."
     ai_color = "#E8EAF0"
 
 st.markdown(
@@ -719,13 +742,13 @@ col_temporal, col_spatial = st.columns([3, 2])
 
 with col_temporal:
     st.markdown(f"<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>Temporal Band — PIR 60개월 시계열</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Temporal Band — 과거 5년 대비 가격 수준</div>", unsafe_allow_html=True)
     st.plotly_chart(build_pir_band_chart(cur_data), use_container_width=True, config={"displayModeBar": False})
     idx = cur_data["pir_relative_index"]
     idx_clr = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
     st.markdown(
         f"<div style='font-size:12px;color:#445566;'>"
-        f"현재 PIR 상대 지수: <span style='color:{idx_clr};font-weight:700;'>{idx:.3f}</span> &nbsp;|&nbsp;"
+        f"역사적 평균 대비 현재 가격의 저렴함: <span style='color:{idx_clr};font-weight:700;'>{idx:.3f}</span> &nbsp;|&nbsp;"
         f"<span style='color:{idx_clr};'>{cur_data['pir_band_label']}</span>"
         f" &nbsp; (<span style='color:{MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)};'>"
         f"{'+15pt' if idx < 0.85 else ('-10pt' if idx > 1.15 else '±0pt')}</span> 조정)"
@@ -808,7 +831,6 @@ def render_danji_card(data: dict, label: str):
         f"<div style='display:flex;align-items:baseline;gap:12px;margin-bottom:8px;'>"
         f"  <span class='score-value {cls}' style='font-size:48px;'>{s}</span>"
         f"  <span style='font-size:16px;color:#445566;'>pt</span>"
-        f"  <span class='badge {badge}'>{data['confidence_label']} {data['confidence_pct']:.0f}%</span>"
         f"</div>"
         f"<hr style='border-color:{BORDER};margin:12px 0;'>"
         f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;'>"
@@ -856,9 +878,9 @@ with col_delta:
         delta_glow = f"text-shadow:0 0 20px {MINT};"
         trigger_text = f"<b style='color:{MINT};'>달성</b>"
     else:
-        delta_color = "#888888"
-        delta_glow = "text-shadow:none;"
-        trigger_text = f"<b style='color:#888888;'>미달성</b> <span style='font-size:11px;color:#A0AEC0;'>(목표 점수 20점 이상 차이 필요)</span>"
+        delta_color = "#556677"
+        delta_glow = "text-shadow: 0 0 20px #1E2329;"
+        trigger_text = f"<b style='color:#556677;'>미달성</b> <span style='font-size:11px;color:#A0AEC0;'>(목표 점수 20점 이상 차이 필요)</span>"
 
     st.markdown(
         f"<div class='card' style='height:300px;display:flex;flex-direction:column;justify-content:center;'>"
@@ -879,7 +901,6 @@ with col_delta:
 
 # ── ALPHA-TRIGGER ─────────────────────────────────────────────────────────────
 if delta >= ALPHA_TRIGGER_DELTA and tgt_data["s_alpha"] >= ALPHA_TRIGGER_MIN:
-    st.balloons()
     st.markdown(
         f"<div class='alpha-banner'>"
         f"<div class='alpha-title'>[STRATEGY CONFIRMED]</div>"
