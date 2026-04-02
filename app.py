@@ -20,7 +20,7 @@ load_dotenv()
 # ── Page Config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Richgo-Cortex AI | 관제탑",
-    page_icon="🏙️",
+    page_icon="",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -48,12 +48,26 @@ html, body, [class*="css"] {{
 
 /* ── Shadow Card ── */
 .card {{
-    background: {CARD_BG};
-    border: 1px solid {BORDER};
-    border-radius: 12px;
-    padding: 20px 24px;
+    background: #1A1A1A;
+    border: 1px solid #333333;
+    border-radius: 4px;
+    padding: 24px;
     margin-bottom: 16px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    box-shadow: none;
+}}
+
+/* ── Alert Styles ── */
+div[data-testid="stAlert"] {{
+    background-color: #1E1E1E !important;
+    border: 1px solid #333333 !important;
+    border-radius: 4px !important;
+    color: #E8EAF0 !important;
+}}
+div[data-testid="stAlert"] svg {{
+    display: none !important;
+}}
+div[data-testid="stAlert"] div[role="img"] {{
+    display: none !important;
 }}
 
 /* ── Score Badge ── */
@@ -174,14 +188,14 @@ def get_all_danji_list(_engine):
         return []
     try:
         query = """
-        SELECT DANJI_ID, DANJI, SGG 
+        SELECT DANJI_ID, SD, SGG, DANJI 
         FROM RICHGO_KR.HACKATHON_2026.DANJI_APT_INFO 
-        ORDER BY DANJI ASC
+        ORDER BY SD ASC, SGG ASC, DANJI ASC
         """
         cur = _engine._client.conn.cursor()
         cur.execute(query)
         rows = cur.fetchall()
-        return [{"DANJI_ID": r[0], "DANJI_NAME": r[1], "ADDR_GU": r[2]} for r in rows]
+        return [{"DANJI_ID": r[0], "SD": r[1], "SGG": r[2], "DANJI_NAME": r[3]} for r in rows]
     except Exception as e:
         st.error(f"단지 목록 동기화 실패: {e}")
         return []
@@ -435,14 +449,48 @@ def badge_class(label: str) -> str:
     return {"High": "badge-high", "Medium": "badge-medium", "Low": "badge-low"}.get(label, "badge-low")
 
 def signal_icon(score: float) -> str:
-    if score >= 70: return "🟢"
-    if score >= 40: return "🟡"
-    return "🔴"
+    if score >= 70: return ""
+    if score >= 40: return ""
+    return ""
+
+
+# ── Helper: Cascading Selector ────────────────────────────────────────────────
+def render_cascading_selector(danji_list: list, prefix: str):
+    sd_list = sorted(list(set([d["SD"] for d in danji_list if d.get("SD")])))
+    if not sd_list: return None
+    
+    sd_key = f"{prefix}_sd"
+    sgg_key = f"{prefix}_sgg"
+    danji_key = f"{prefix}_danji"
+    
+    if sd_key not in st.session_state:
+        st.session_state[sd_key] = sd_list[0]
+        
+    selected_sd = st.selectbox("시/도", sd_list, key=sd_key)
+    
+    sgg_list = sorted(list(set([d["SGG"] for d in danji_list if d.get("SD") == selected_sd and d.get("SGG")])))
+    if not sgg_list: return None
+    
+    if sgg_key not in st.session_state or st.session_state[sgg_key] not in sgg_list:
+        st.session_state[sgg_key] = sgg_list[0]
+        
+    selected_sgg = st.selectbox("시/군/구", sgg_list, key=sgg_key)
+    
+    filtered_danji = sorted([d for d in danji_list if d.get("SD") == selected_sd and d.get("SGG") == selected_sgg], key=lambda x: x.get("DANJI_NAME", ""))
+    if not filtered_danji: return None
+        
+    selected_danji = st.selectbox(
+        "단지명", 
+        filtered_danji, 
+        format_func=lambda x: x.get("DANJI_NAME", ""),
+        key=danji_key
+    )
+    return selected_danji
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown(f"<div style='color:{MINT};font-size:22px;font-weight:800;'>🏙️ Richgo-Cortex AI</div>", unsafe_allow_html=True)
+    st.markdown(f"<div style='color:{MINT};font-size:22px;font-weight:800;'>Richgo-Cortex AI</div>", unsafe_allow_html=True)
     st.markdown("<div style='color:#445566;font-size:12px;margin-bottom:16px;'>Strategic Command Center v1.0</div>", unsafe_allow_html=True)
     st.markdown("---")
 
@@ -459,28 +507,25 @@ with st.sidebar:
 
     danji_list = get_all_danji_list(engine)
     if not danji_list:
-        st.warning("⚠️ 데이터 동기화 대기 중... Snowflake 연결을 확인하세요.")
+        st.warning("데이터 동기화 대기 중... Snowflake 연결을 확인하세요.")
         st.stop()
 
-    selected_current = st.selectbox(
-        "📍 현재 단지", 
-        options=danji_list, 
-        format_func=lambda x: f"{x['DANJI_NAME']} ({x['ADDR_GU']})",
-        index=0
-    )
-    selected_target  = st.selectbox(
-        "🎯 목표 단지", 
-        options=danji_list, 
-        format_func=lambda x: f"{x['DANJI_NAME']} ({x['ADDR_GU']})",
-        index=1 if len(danji_list) > 1 else 0
-    )
+    with st.expander("현재 단지 설정", expanded=True):
+        selected_current = render_cascading_selector(danji_list, "cur")
+        
+    with st.expander("목표 단지 설정", expanded=False):
+        selected_target = render_cascading_selector(danji_list, "tgt")
 
-    is_same_danji = selected_current['DANJI_ID'] == selected_target['DANJI_ID']
+
+    if selected_current and selected_target:
+        is_same_danji = selected_current['DANJI_ID'] == selected_target['DANJI_ID']
+    else:
+        is_same_danji = True
 
     if is_same_danji:
-        st.warning("⚠️ 현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
+        st.warning("현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
         
-    if st.button("🔍 통합 분석 실행", use_container_width=True, disabled=is_same_danji):
+    if st.button("통합 분석 실행", use_container_width=True, disabled=is_same_danji):
         with st.spinner("Snowflake 라이브 쿼리 중..."):
             try:
                 st.session_state["cur_data"] = engine.analyze(selected_current["DANJI_ID"])
@@ -494,7 +539,7 @@ with st.sidebar:
         "<div style='color:#445566;font-size:11px;line-height:1.8;'>"
         "Model C+ | Plan Freeze 2026-04-01<br>"
         "Richgo × Snowflake Cortex AI<br>"
-        f"<span style='color:{MINT}'>⚡ Alpha-Trigger ≥ 80pt Δ≥20</span>"
+        f"<span style='color:{MINT}'>Alpha-Trigger ≥ 80pt Δ≥20</span>"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -505,7 +550,7 @@ if "cur_data" in st.session_state and "tgt_data" in st.session_state:
     cur_data = st.session_state["cur_data"]
     tgt_data = st.session_state["tgt_data"]
 else:
-    st.info("👆 좌측 사이드바에서 단지를 검색하고 **[🔍 통합 분석 실행]** 버튼을 클릭하십시오.")
+    st.info("좌측 사이드바에서 단지를 검색하고 **[통합 분석 실행]** 버튼을 클릭하십시오.")
     st.stop()
 # Variables are correctly loaded from session state above.
 
@@ -520,8 +565,8 @@ st.markdown(
 )
 st.markdown(
     f"<div style='font-size:12px;color:#445566;margin-bottom:24px;'>"
-    f"📅 {cur_data['analysis_date']} &nbsp;|&nbsp; "
-    f"📍 {cur_data['danji_name']} ({cur_data['sgg']}) &nbsp;|&nbsp; "
+    f"{cur_data['analysis_date']} &nbsp;|&nbsp; "
+    f"{cur_data['danji_name']} ({cur_data['sgg']}) &nbsp;|&nbsp; "
     f"<span style='color:{MINT}'>Richgo-Cortex AI Model C+</span>"
     f"</div>",
     unsafe_allow_html=True,
@@ -533,7 +578,7 @@ col_gauge, col_metrics = st.columns([1, 2])
 
 with col_gauge:
     conf_lbl = cur_data["confidence_label"]
-    trigger_html = f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>✅ 즉시 실행 트리거 발동</div>" if cur_data['execution_trigger'] else ""
+    trigger_html = f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>즉시 실행 트리거 발동</div>" if cur_data['execution_trigger'] else ""
     st.markdown(
         f"<div class='card'>"
         f"<div class='section-header'>S_alpha 종합 점수</div>"
@@ -565,7 +610,7 @@ with col_metrics:
     m1.markdown(
         f"<div class='metric-label'>전세가율</div>"
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
-        f"<div style='font-size:11px;color:#445566;'>바닥 {jfloor*100:.0f}% {'✅' if cur_data['jeonse_safety_ok'] else '❌'}</div>",
+        f"<div style='font-size:11px;color:#445566;'>바닥 {jfloor*100:.0f}% {'' if cur_data['jeonse_safety_ok'] else ''}</div>",
         unsafe_allow_html=True,
     )
 
@@ -605,7 +650,7 @@ with col_metrics:
 
     # 초품아 & 뉴스
     m5, m6 = st.columns(2)
-    chobuma_icon = "🏫 초품아 ×1.5 가중" if cur_data["is_chobuma"] else "— 초품아 비해당"
+    chobuma_icon = "초품아 ×1.5 가중" if cur_data["is_chobuma"] else "— 초품아 비해당"
     chobuma_clr = MINT if cur_data["is_chobuma"] else "#445566"
     m5.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
@@ -632,7 +677,7 @@ col_temporal, col_spatial = st.columns([3, 2])
 
 with col_temporal:
     st.markdown(f"<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>⏱ Temporal Band — PIR 60개월 시계열</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Temporal Band — PIR 60개월 시계열</div>", unsafe_allow_html=True)
     st.plotly_chart(build_pir_band_chart(cur_data), use_container_width=True, config={"displayModeBar": False})
     idx = cur_data["pir_relative_index"]
     idx_clr = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
@@ -649,7 +694,7 @@ with col_temporal:
 
 with col_spatial:
     st.markdown(f"<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>🗺 Spatial Risk — 인접구 공급 신호</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-header'>Spatial Risk — 인접구 공급 신호</div>", unsafe_allow_html=True)
 
     spill = cur_data["spillover_detail"]
     own_score = spill["own_score"]
@@ -696,7 +741,7 @@ with col_spatial:
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     f"<div style='font-size:20px;font-weight:800;color:#E8EAF0;margin-bottom:16px;'>"
-    f"🔄 상급지 갈아타기 시뮬레이터</div>",
+    f"상급지 갈아타기 시뮬레이터</div>",
     unsafe_allow_html=True,
 )
 
@@ -711,7 +756,7 @@ def render_danji_card(data: dict, label: str):
 
     jok_style = f"style='color:{MINT};'" if jok else f"style='color:{RED_NEO};'"
     pok_style = f"style='color:{MINT};'" if pok else ""
-    chobuma_text = f"🏫 <b style='color:{MINT};'>초품아 ×1.5</b>" if data['is_chobuma'] else "— 일반"
+    chobuma_text = f"<b style='color:{MINT};'>초품아 ×1.5</b>" if data['is_chobuma'] else "— 일반"
 
     st.markdown(
         f"<div class='card'>"
@@ -725,13 +770,13 @@ def render_danji_card(data: dict, label: str):
         f"</div>"
         f"<hr style='border-color:{BORDER};margin:12px 0;'>"
         f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;'>"
-        f"  <div>💰 매매가: <b>{data['latest_meme_price_man_won']/10000:.1f}억</b></div>"
-        f"  <div>🏠 전세가: <b>{data['latest_jeonse_price_man_won']/10000:.1f}억</b></div>"
-        f"  <div>📊 전세가율: <b {jok_style}>{data['jeonse_ratio']*100:.1f}%</b></div>"
-        f"  <div>📉 PIR: <b {pok_style}>{data['pir']:.1f}yr</b></div>"
-        f"  <div>🏗 공급점수: <b>{data['supply_score_final']:.1f}pt</b></div>"
-        f"  <div>📰 심리점수: <b>{data['sentiment_score']:+.1f}pt</b></div>"
-        f"  <div>🎓 LIVING: <b>{data['living_score']}/100</b></div>"
+        f"  <div>매매가: <b>{data['latest_meme_price_man_won']/10000:.1f}억</b></div>"
+        f"  <div>전세가: <b>{data['latest_jeonse_price_man_won']/10000:.1f}억</b></div>"
+        f"  <div>전세가율: <b {jok_style}>{data['jeonse_ratio']*100:.1f}%</b></div>"
+        f"  <div>PIR: <b {pok_style}>{data['pir']:.1f}yr</b></div>"
+        f"  <div>공급점수: <b>{data['supply_score_final']:.1f}pt</b></div>"
+        f"  <div>심리점수: <b>{data['sentiment_score']:+.1f}pt</b></div>"
+        f"  <div>LIVING: <b>{data['living_score']}/100</b></div>"
         f"  <div>{chobuma_text}</div>"
         f"</div>"
         f"</div>",
@@ -739,7 +784,7 @@ def render_danji_card(data: dict, label: str):
     )
 
 with col_cur:
-    render_danji_card(cur_data, "📍 현재 단지")
+    render_danji_card(cur_data, "현재 단지")
 
 with col_arrow:
     st.markdown(
@@ -749,7 +794,7 @@ with col_arrow:
     )
 
 with col_tgt:
-    render_danji_card(tgt_data, "🎯 목표 단지")
+    render_danji_card(tgt_data, "목표 단지")
 
 # 레이더 차트
 col_radar, col_delta = st.columns([3, 2])
@@ -787,7 +832,7 @@ if delta >= ALPHA_TRIGGER_DELTA and tgt_data["s_alpha"] >= ALPHA_TRIGGER_MIN:
     st.balloons()
     st.markdown(
         f"<div class='alpha-banner'>"
-        f"<div class='alpha-title'>🏆 [STRATEGY CONFIRMED]</div>"
+        f"<div class='alpha-title'>[STRATEGY CONFIRMED]</div>"
         f"<div style='font-size:26px;font-weight:800;color:{GOLD};text-shadow:0 0 20px {GOLD};'>"
         f"자산 가치 점프 구간! 상급지 이동을 권고합니다."
         f"</div>"
@@ -796,9 +841,9 @@ if delta >= ALPHA_TRIGGER_DELTA and tgt_data["s_alpha"] >= ALPHA_TRIGGER_MIN:
         f"<span class='alpha-delta'>{delta:+d}pt &nbsp; ({delta_pct:+.1f}%)</span>"
         f"</div>"
         f"<div style='margin-top:16px;font-size:13px;color:#664400;line-height:1.8;'>"
-        f"✅ 조건 1: 목표 점수 {tgt_data['s_alpha']}pt ≥ {ALPHA_TRIGGER_MIN}pt<br>"
-        f"✅ 조건 2: Delta {delta:+d}pt ≥ {ALPHA_TRIGGER_DELTA}pt<br>"
-        f"📌 {cur_data['danji_name']} → {tgt_data['danji_name']} 이동 시 "
+        f"조건 1: 목표 점수 {tgt_data['s_alpha']}pt ≥ {ALPHA_TRIGGER_MIN}pt<br>"
+        f"조건 2: Delta {delta:+d}pt ≥ {ALPHA_TRIGGER_DELTA}pt<br>"
+        f"{cur_data['danji_name']} → {tgt_data['danji_name']} 이동 시 "
         f"예상 자산 가치 상승 레버리지 확보"
         f"</div>"
         f"</div>",
