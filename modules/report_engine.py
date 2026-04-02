@@ -11,8 +11,6 @@ Public API:
   build_ai_report(cur: dict, tgt: dict) → dict
   build_delta(cur: dict, tgt: dict)     → dict
 """
-from __future__ import annotations
-
 # ── Alpha-Trigger Constants ────────────────────────────────────────────────────
 ALPHA_TRIGGER_DELTA = 20   # 점수 상승 폭 임계값
 ALPHA_TRIGGER_MIN   = 80   # 목표 단지 최소 점수

@@ -1,6 +1,7 @@
 # Moving-Up 마스터 | Richgo-Cortex AI Strategic Command Center v2.0 | Model C+ 2026-04-02
 # Run: streamlit run app.py
 # modules/data_loader.py | modules/report_engine.py | modules/styles.py
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 import streamlit as st
 
@@ -30,7 +31,7 @@ inject_css()
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
-def render_sidebar() -> tuple[dict | None, dict | None]:
+def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
     """사이드바 렌더링 — 단지 선택 UI. Returns (cur_result, tgt_result)."""
     with st.sidebar:
         st.markdown(

@@ -9,9 +9,9 @@ Responsibilities:
 
 Public API:
   get_engine()                       → RichgoCortexEngine | None
-  get_all_danji_list(engine)         → list[dict]
+  get_all_danji_list(engine)         → List[Dict]
 """
-from __future__ import annotations
+from typing import Dict, List, Optional
 
 import os
 import streamlit as st
@@ -46,7 +46,7 @@ def get_engine():
 # ── Danji List Loader ──────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_all_danji_list(_engine) -> list[dict]:
+def get_all_danji_list(_engine) -> List[Dict]:
     """
     Snowflake DB 전 지역 단지 실시간 동기화.
 
@@ -89,7 +89,7 @@ def get_all_danji_list(_engine) -> list[dict]:
 
 # ── Cascading Selector Helper ──────────────────────────────────────────────────
 
-def render_cascading_selector(danji_list: list[dict], prefix: str) -> dict | None:
+def render_cascading_selector(danji_list: List[Dict], prefix: str) -> Optional[Dict]:
     """
     시/도 → 시/군/구 → 단지명 3단 연동 셀렉터.
 

@@ -10,7 +10,7 @@ Responsibilities:
   - build_comparison_chart() — 현재 vs 목표 레이더 차트
   - score_class()  / badge_class() / signal_icon() — 조건부 UI 헬퍼
 """
-from __future__ import annotations
+from typing import List
 
 from datetime import datetime, timedelta
 
@@ -328,7 +328,7 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
     """
     categories = ["공급점수", "PIR점수", "전세가율", "뉴스심리", "종합"]
 
-    def _radar_vals(d: dict) -> list[float]:
+    def _radar_vals(d: dict) -> List[float]:
         return [
             d["supply_score_final"],
             (1 - min(1.0, d["pir_relative_index"])) * 100,
