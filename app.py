@@ -548,11 +548,17 @@ with st.sidebar:
     selected_current = st.selectbox("📍 현재 단지", demo_keys, index=0)
     selected_target  = st.selectbox("🎯 목표 단지", demo_keys, index=1)
 
+    is_same_danji = selected_current == selected_target
+
     if mode == "live":
         st.markdown("---")
         st.markdown("<div class='section-header'>직접 입력</div>", unsafe_allow_html=True)
         custom_id = st.text_input("단지 ID (DANJI_ID)", placeholder="예: a7qzYub")
-        if st.button("🔍 분석 실행", use_container_width=True) and custom_id:
+        
+        if is_same_danji:
+            st.warning("⚠️ 현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
+            
+        if st.button("🔍 분석 실행", use_container_width=True, disabled=is_same_danji) and custom_id:
             with st.spinner("Snowflake 쿼리 중…"):
                 try:
                     live_result = engine.analyze(custom_id)
