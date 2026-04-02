@@ -170,3 +170,20 @@ SELECT SNOWFLAKE.CORTEX.SENTIMENT('금리 인하 호재') AS s;
 ---
 
 *Richgo-Cortex AI · Model C+ · Snowflake Hackathon 2026*
+
+## 🎯 Git Convention
+
+- 🎉 Start
+- ✨ Feat
+- 🐛 Fix
+- 🎨 Design
+- ♻️ Refactor
+- 🔧 Settings
+- 🗃️ Comment
+- ➕ Dependency
+- 📝 Docs
+- 🔀 Merge
+- 🚀 Deploy
+- 🚚 Rename
+- 🔥 Remove
+- ⏪️ Revert

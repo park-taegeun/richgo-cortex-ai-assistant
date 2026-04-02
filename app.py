@@ -604,20 +604,22 @@ st.markdown(
 col_gauge, col_metrics = st.columns([1, 2])
 
 with col_gauge:
+    conf_lbl = cur_data["confidence_label"]
+    trigger_html = f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>✅ 즉시 실행 트리거 발동</div>" if cur_data['execution_trigger'] else ""
     st.markdown(
         f"<div class='card'>"
         f"<div class='section-header'>S_alpha 종합 점수</div>"
         f"<div class='score-value {score_class(cur_data['s_alpha'])}'>{cur_data['s_alpha']}</div>"
         f"<div style='margin-top:8px;'>"
-        f"<span class='badge {badge_class(cur_data[\"confidence_label\"])}'>"
-        f"{cur_data['confidence_label']} &nbsp; {cur_data['confidence_pct']:.0f}%"
+        f"<span class='badge {badge_class(conf_lbl)}'>"
+        f"{conf_lbl} &nbsp; {cur_data['confidence_pct']:.0f}%"
         f"</span>"
         f"</div>"
         f"<div style='color:#445566;font-size:11px;margin-top:12px;'>"
         f"Band 보정 전: {cur_data['s_alpha_before_band']}pt &nbsp;"
         f"PIR 조정: {cur_data['pir_band_adjustment']:+.0f}pt"
         f"</div>"
-        f"{'<div style=\"color:' + MINT + ';font-size:12px;font-weight:700;margin-top:8px;\">✅ 즉시 실행 트리거 발동</div>' if cur_data['execution_trigger'] else ''}"
+        f"{trigger_html}"
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -779,6 +781,10 @@ def render_danji_card(data: dict, label: str):
     pok = data["pir_undervalue_ok"]
     badge = badge_class(data["confidence_label"])
 
+    jok_style = f"style='color:{MINT};'" if jok else f"style='color:{RED_NEO};'"
+    pok_style = f"style='color:{MINT};'" if pok else ""
+    chobuma_text = f"🏫 <b style='color:{MINT};'>초품아 ×1.5</b>" if data['is_chobuma'] else "— 일반"
+
     st.markdown(
         f"<div class='card'>"
         f"<div class='section-header'>{label}</div>"
@@ -793,12 +799,12 @@ def render_danji_card(data: dict, label: str):
         f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;'>"
         f"  <div>💰 매매가: <b>{data['latest_meme_price_man_won']/10000:.1f}억</b></div>"
         f"  <div>🏠 전세가: <b>{data['latest_jeonse_price_man_won']/10000:.1f}억</b></div>"
-        f"  <div>📊 전세가율: <b {'style=\"color:' + MINT + ';\"' if jok else 'style=\"color:' + RED_NEO + ';\"'}>{data['jeonse_ratio']*100:.1f}%</b></div>"
-        f"  <div>📉 PIR: <b {'style=\"color:' + MINT + ';\"' if pok else ''}>{data['pir']:.1f}yr</b></div>"
+        f"  <div>📊 전세가율: <b {jok_style}>{data['jeonse_ratio']*100:.1f}%</b></div>"
+        f"  <div>📉 PIR: <b {pok_style}>{data['pir']:.1f}yr</b></div>"
         f"  <div>🏗 공급점수: <b>{data['supply_score_final']:.1f}pt</b></div>"
         f"  <div>📰 심리점수: <b>{data['sentiment_score']:+.1f}pt</b></div>"
         f"  <div>🎓 LIVING: <b>{data['living_score']}/100</b></div>"
-        f"  <div>{'🏫 <b style=\"color:' + MINT + ';\">초품아 ×1.5</b>' if data['is_chobuma'] else '— 일반'}</div>"
+        f"  <div>{chobuma_text}</div>"
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
