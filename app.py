@@ -397,7 +397,7 @@ def build_pir_band_chart(result: dict) -> go.Figure:
         ),
         yaxis=dict(
             gridcolor=BORDER, showgrid=True, linecolor=BORDER,
-            title="PIR (년)", titlefont=dict(size=11),
+            title="PIR (년)", title_font=dict(size=11),
         ),
         height=280,
     )
