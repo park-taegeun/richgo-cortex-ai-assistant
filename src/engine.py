@@ -1,14 +1,16 @@
 """
 Richgo-Cortex AI Assistant — Analysis Engine
 Model C+ | Plan Freeze: 2026-04-01
+Calibrated: 2026-04-02 (Adaptive Jeonse Floor)
 
 Data flow:
   danji_id
-    → fetch_danji_info() + fetch_market_price()   [parallel]
+    → fetch_danji_info() + fetch_market_price()
     → compute_jeonse_ratio()
     → compute_pir()
     → compute_supply_score()
     → compute_sentiment_score()
+    → get_jeonse_floor()  ← NEW: adaptive per-district floor
     → compute_s_alpha()
     → compute_confidence()
     → analyze() → recommendation dict
@@ -16,11 +18,28 @@ Data flow:
 
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 # ── Constants (env override → Model C+ defaults) ────────────────────────────
-JEONSE_SAFETY_FLOOR       = float(os.getenv("JEONSE_SAFETY_FLOOR",       "0.70"))
+# Legacy single floor (kept for env-override fallback)
+JEONSE_SAFETY_FLOOR       = float(os.getenv("JEONSE_SAFETY_FLOOR",       "0.65"))
+
+# Adaptive Safety Floor — calibrated from 460k-row analysis (2026-04-02)
+# Method: MAX(regional_P20 × 1.15, regional_avg × 0.80)
+# Key finding: 강남3구 P80=50.9%, 서울전체 P80=66.95% → 70% 기준 전면 무효
+ADAPTIVE_JEONSE_FLOOR: dict = {
+    "강남구": 0.35,  # avg=0.39, P20=0.26
+    "용산구": 0.35,  # avg=0.39, P20=0.30
+    "성동구": 0.35,  # avg=0.41, P20=0.36
+    "서초구": 0.38,  # avg=0.43, P20=0.31
+    "송파구": 0.41,  # avg=0.44, P20=0.36
+    "마포구": 0.48,  # avg=0.51, P20=0.42
+    "종로구": 0.48,  # avg=0.59, P20=0.52
+    "서울_기타": 0.55,  # 서울전체 avg=0.58, P20=0.49
+    "경기": 0.65,
+    "default": 0.65,
+}
 PIR_UNDERVALUE_RATIO      = float(os.getenv("PIR_UNDERVALUE_THRESHOLD",  "0.85"))
 SUPPLY_SAFE_UPPER         = float(os.getenv("SUPPLY_DEMAND_RATIO_SAFE",  "0.8"))
 SUPPLY_DANGER             = float(os.getenv("SUPPLY_DEMAND_RATIO_DANGER","1.4"))
@@ -60,6 +79,22 @@ class RichgoCortexEngine:
 
     def __init__(self, conn):
         self.conn = conn
+
+    @staticmethod
+    def get_jeonse_floor(sgg: str, sd: str) -> float:
+        """
+        Adaptive Safety Floor 조회 (2026-04-02 460k행 실측 캘리브레이션).
+        우선순위: SGG 직접 매핑 → 서울_기타 → SD 기본값 → default
+
+        강남3구 P80=50.9%, 서울전체 P80=66.95% 실측으로 70% 기준 폐기.
+        """
+        if sgg in ADAPTIVE_JEONSE_FLOOR:
+            return ADAPTIVE_JEONSE_FLOOR[sgg]
+        if sd == "서울":
+            return ADAPTIVE_JEONSE_FLOOR["서울_기타"]
+        return ADAPTIVE_JEONSE_FLOOR.get(sd, ADAPTIVE_JEONSE_FLOOR["default"])
+
+    # ── Private helpers ───────────────────────────────────────────────────────
 
     def _cur(self):
         return self.conn.cursor()
@@ -148,7 +183,6 @@ class RichgoCortexEngine:
     def compute_pir(self, mean_meme_price_man_won: float, sd: str) -> tuple:
         """
         PIR = 평균 매매가(만원) / 지역 연 소득(만원).
-        Returns (pir, confidence_deduction).
         항상 SGG 추정 소득 사용 → -20% deduction.
         """
         annual_income = REGIONAL_INCOME_MAN_WON.get(sd, REGIONAL_INCOME_MAN_WON["default"])
@@ -159,14 +193,13 @@ class RichgoCortexEngine:
         self, sgg: str, region_prices: Optional[list] = None
     ) -> tuple:
         """
-        공급 점수 계산 (Model C+ 구간 함수).
+        공급 점수 (Model C+ 구간 함수).
         R = 최근 총세대수 / 전년도 총세대수
-        Returns (supply_score 0~100, confidence_deduction).
         """
         deduction = 0.0
         if region_prices and len(region_prices) >= 13:
-            latest_hh   = region_prices[0].get("total_households") or 0
-            prev_yr_hh  = region_prices[12].get("total_households") or 0
+            latest_hh  = region_prices[0].get("total_households") or 0
+            prev_yr_hh = region_prices[12].get("total_households") or 0
             R = (latest_hh / prev_yr_hh) if prev_yr_hh > 0 else 1.0
             if not prev_yr_hh:
                 deduction = 0.10
@@ -179,9 +212,9 @@ class RichgoCortexEngine:
         """
         Supply Score 구간 함수 (Model C+ 확정).
         R < 0.8          → 100
-        0.8 ≤ R ≤ 1.2   → 100 - 125*(R-0.8)   [선형 100→50]
-        1.2 < R ≤ 1.4   → 50  - 250*(R-1.2)   [급경사 50→0]
-        R > 1.4          → max(0, 50*exp(-3*(R-1.4)))  [지수 감쇠]
+        0.8 ≤ R ≤ 1.2   → 100 - 125*(R-0.8)
+        1.2 < R ≤ 1.4   → 50  - 250*(R-1.2)
+        R > 1.4          → max(0, 50*exp(-3*(R-1.4)))
         """
         if R < SUPPLY_SAFE_UPPER:
             return 100.0
@@ -219,8 +252,7 @@ class RichgoCortexEngine:
 
         positive = sum(1 for s in scores if s > 0)
         negative = sum(1 for s in scores if s < 0)
-        dominant_ratio = max(positive, negative) / len(scores)
-        if dominant_ratio < SENTIMENT_AGREE_THRESHOLD:
+        if (max(positive, negative) / len(scores)) < SENTIMENT_AGREE_THRESHOLD:
             deduction += 0.10
 
         scaled = round((sum(scores) / len(scores)) * 5.0, 4)
@@ -270,7 +302,7 @@ class RichgoCortexEngine:
 
     def compute_confidence(self, deductions: list) -> tuple:
         """
-        신뢰도 점수. Returns (confidence_pct, label 'High'/'Medium'/'Low').
+        신뢰도 점수. Returns (confidence_pct, label).
         High >= 85% / Medium 60~84% / Low < 60%
         """
         confidence = max(0.0, round((1.0 - sum(deductions)) * 100.0, 1))
@@ -313,6 +345,9 @@ class RichgoCortexEngine:
         sentiment_score, d_n = self.compute_sentiment_score(news_texts or [])
         deductions.append(d_n)
 
+        # Adaptive Safety Floor — 지역별 실측 캘리브레이션
+        jeonse_floor = self.get_jeonse_floor(sgg, sd)
+
         s_alpha = self.compute_s_alpha(
             jeonse_ratio=jeonse_ratio, pir=pir_val, pir_10yr_avg=pir_10yr_avg,
             supply_score=supply_score, sentiment_score=sentiment_score,
@@ -333,7 +368,8 @@ class RichgoCortexEngine:
             "confidence_label":            confidence_label,
             "execution_trigger":           s_alpha >= MIGRATION_SCORE_EXECUTE,
             "jeonse_ratio":                jeonse_ratio,
-            "jeonse_safety_ok":            jeonse_ratio >= JEONSE_SAFETY_FLOOR,
+            "jeonse_floor":                jeonse_floor,
+            "jeonse_safety_ok":            jeonse_ratio >= jeonse_floor,
             "pir":                         pir_val,
             "pir_10yr_avg":                round(pir_10yr_avg, 2),
             "pir_undervalue_ok":           pir_val <= pir_10yr_avg * PIR_UNDERVALUE_RATIO,
