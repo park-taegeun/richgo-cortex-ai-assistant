@@ -166,13 +166,81 @@ class SnowflakeClient:
                         results.append(t)
                         seen.add(t)
 
-        except Exception:
+        except Exception as e:
             # 테이블/컬럼 불일치 시 빈 리스트 반환 — 파이프라인 보호
+            print(f"🚨 [DEBUG] fetch_news_texts EXCEPTION: {type(e).__name__}: {e}")
             results = []
         finally:
             cur.close()
 
         return results[:20]  # Cortex 비용 관리: 최대 20건
+
+    def fetch_price_momentum(self, danji_id: str) -> dict:
+        """
+        가격 모멘텀 계산용 — 최근 3개월 vs 이전 3개월 평균 매매가 비교.
+        뉴스 RSS 테이블 부재 시 Proxy Sentiment 산출에 사용.
+
+        Returns:
+            {"recent_avg": float, "prior_avg": float, "momentum_pct": float}
+            데이터 없으면 {"recent_avg": 0, "prior_avg": 0, "momentum_pct": 0.0}
+        """
+        cur = self._cur()
+        try:
+            cur.execute("""
+                SELECT
+                    AVG(CASE WHEN idx <= 3 THEN MEAN_MEME_PRICE END) AS recent_avg,
+                    AVG(CASE WHEN idx > 3 AND idx <= 6 THEN MEAN_MEME_PRICE END) AS prior_avg
+                FROM (
+                    SELECT MEAN_MEME_PRICE,
+                           ROW_NUMBER() OVER (ORDER BY YYYYMMDD DESC) AS idx
+                    FROM DANJI_APT_RICHGO_MARKET_PRICE_M_H
+                    WHERE DANJI_ID = %s
+                      AND MEAN_MEME_PRICE IS NOT NULL
+                )
+            """, (danji_id,))
+            row = cur.fetchone()
+        except Exception as e:
+            print(f"⚠ [DEBUG] fetch_price_momentum error: {e}")
+            row = None
+        finally:
+            cur.close()
+
+        if not row or row[0] is None or row[1] is None or row[1] == 0:
+            return {"recent_avg": 0.0, "prior_avg": 0.0, "momentum_pct": 0.0}
+
+        recent, prior = float(row[0]), float(row[1])
+        momentum_pct = round((recent - prior) / prior * 100, 4)
+        return {"recent_avg": recent, "prior_avg": prior, "momentum_pct": momentum_pct}
+
+    def fetch_population_net(self, sgg: str, months: int = 6) -> float:
+        """
+        최근 N개월 인구 순이동 평균 (양수=유입, 음수=유출).
+        Proxy Sentiment 보정에 사용.
+        """
+        cur = self._cur()
+        try:
+            cur.execute("""
+                SELECT AVG(POPULATION)
+                FROM (
+                    SELECT POPULATION
+                    FROM REGION_POPULATION_MOVEMENT
+                    WHERE SGG = %s
+                      AND MOVEMENT_TYPE = '순이동'
+                      AND REGION_LEVEL = 'sgg'
+                    ORDER BY YYYYMMDD DESC
+                    LIMIT %s
+                )
+            """, (sgg, months))
+            row = cur.fetchone()
+        except Exception as e:
+            print(f"⚠ [DEBUG] fetch_population_net error: {e}")
+            row = None
+        finally:
+            cur.close()
+
+        if not row or row[0] is None:
+            return 0.0
+        return float(row[0])
 
     def fetch_population_movement(self, sgg: str, months: int = 36) -> list:
         """REGION_POPULATION_MOVEMENT — SGG net migration."""

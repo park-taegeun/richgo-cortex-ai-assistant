@@ -231,13 +231,28 @@ class RichgoCortexEngine:
         # 7. Sentiment — RSS 뉴스 자동 수집 후 Cortex 감성 분석
         # news_texts가 명시적으로 전달된 경우 우선 사용 (테스트/오버라이드 용도)
         # 전달되지 않은 경우(일반 호출) → STAGING.REAL_ESTATE_RSS_FEEDS 3단계 Fallback
+        # RSS 테이블 부재 시 → 가격 모멘텀 + 인구 유입 Proxy Score 자동 전환
+        sentiment_proxy_used = False
         if not news_texts:
             news_texts = self._client.fetch_news_texts(
                 danji_name=info["danji"],
                 sgg=sgg,
                 sd=sd,
             )
-        sentiment_score, d_sentiment = self.sentiment.compute_score(news_texts)
+
+        if news_texts:
+            sentiment_score, d_sentiment = self.sentiment.compute_score(news_texts)
+        else:
+            # Proxy 전환: 가격 모멘텀 + 인구 유입
+            momentum_data  = self._client.fetch_price_momentum(danji_id)
+            population_net = self._client.fetch_population_net(sgg)
+            sentiment_score, d_sentiment = self.sentiment.compute_proxy_score(
+                momentum_pct=momentum_data["momentum_pct"],
+                population_net=population_net,
+            )
+            sentiment_proxy_used = True
+
+        print(f"📡 [DEBUG] Danji: {info['danji']} | news_count: {len(news_texts)} | proxy: {sentiment_proxy_used} | Score: {sentiment_score:+.4f} | Deduction: {d_sentiment}")
         deductions.append(d_sentiment)
 
         # 8. Adaptive jeonse floor
@@ -294,6 +309,7 @@ class RichgoCortexEngine:
             "spillover_detail":       spillover_detail,
             # ── 감성
             "sentiment_score":        sentiment_score,
+            "sentiment_proxy_used":   sentiment_proxy_used,
             # ── 단지 속성
             "living_score":           info.get("living_score"),
             "is_chobuma":             is_chobuma,

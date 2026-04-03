@@ -503,17 +503,26 @@ def render_key_metrics(cur_data: dict) -> None:
         f"</div>",
         unsafe_allow_html=True,
     )
-    sent     = cur_data["sentiment_score"]
-    sent_cls = "metric-ok" if sent > 0 else "metric-bad"
+    sent       = cur_data["sentiment_score"]
+    proxy_used = cur_data.get("sentiment_proxy_used", False)
+    sent_cls   = "metric-ok" if sent > 0 else ("metric-bad" if sent < 0 else "metric-warn")
+    if proxy_used:
+        sent_label    = "시장 모멘텀 심리 (Proxy)"
+        sent_sublabel = "⚠️ 뉴스 심리 엔진 연결 중 — 가격 모멘텀 + 인구 유입으로 대체 분석"
+        sent_sublabel_color = YELLOW_NEO
+    else:
+        sent_label    = "Snowflake Cortex AI 뉴스 심리"
+        sent_sublabel = "Cortex LLM · 뉴스 실시간 분석"
+        sent_sublabel_color = "#445566"
     m6.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
         f"<div class='metric-label' "
         f"title='Snowflake Cortex LLM이 최신 뉴스 1,000건을 실시간 분석한 시장의 감정 온도입니다. "
         f"+값은 긍정적, −값은 부정적 시장 심리를 의미합니다.'>"
-        f"Snowflake Cortex AI 뉴스 심리</div>"
+        f"{sent_label}</div>"
         f"<div class='metric-value {sent_cls}'>{sent:+.1f}pt</div>"
-        f"<div style='font-size:10px;color:#445566;margin-top:4px;'>"
-        f"Cortex LLM · 뉴스 1,000건 실시간 분석</div>"
+        f"<div style='font-size:10px;color:{sent_sublabel_color};margin-top:4px;'>"
+        f"{sent_sublabel}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )

@@ -67,3 +67,39 @@ class SentimentAnalyzer:
 
         raw_avg = sum(scores) / len(scores)
         return round(raw_avg * 5.0, 4), deduction  # -5 ~ +5
+
+    @staticmethod
+    def compute_proxy_score(momentum_pct: float, population_net: float = 0.0) -> tuple:
+        """
+        뉴스 RSS 데이터 부재 시 가격 모멘텀 + 인구 유입으로 대체 심리 점수 산출.
+
+        Proxy 산출 기준 (가격 모멘텀):
+          momentum > +5%  → +3.0  (시장 급등 심리)
+          momentum > +2%  → +1.5  (상승 심리)
+          -2% ~ +2%       →  0.0  (중립)
+          momentum < -2%  → -1.5  (하락 심리)
+          momentum < -5%  → -3.0  (시장 급락 심리)
+
+        인구 유입 보정 (±0.5):
+          net_inflow > 50  → +0.5
+          net_outflow < -50 → -0.5
+
+        Returns: (proxy_score: float [-5~+5], deduction: float)
+        Deduction: -0.10 (프록시 사용 감점 — 직접 뉴스 분석 대비 신뢰도 낮음)
+        """
+        if momentum_pct > 5.0:
+            base = 3.0
+        elif momentum_pct > 2.0:
+            base = 1.5
+        elif momentum_pct < -5.0:
+            base = -3.0
+        elif momentum_pct < -2.0:
+            base = -1.5
+        else:
+            base = 0.0
+
+        pop_adj = 0.5 if population_net > 50 else (-0.5 if population_net < -50 else 0.0)
+        proxy_score = round(max(-5.0, min(5.0, base + pop_adj)), 4)
+
+        print(f"📊 [PROXY] momentum={momentum_pct:+.2f}% | pop_net={population_net:.0f} → proxy_score={proxy_score:+.4f}")
+        return proxy_score, 0.10  # 프록시 사용 감점 -10%
