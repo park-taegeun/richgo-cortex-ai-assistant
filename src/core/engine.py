@@ -228,8 +228,16 @@ class RichgoCortexEngine:
         supply_score_raw = spillover_detail["own_score"]
         deductions.append(d_supply)
 
-        # 7. Sentiment
-        sentiment_score, d_sentiment = self.sentiment.compute_score(news_texts or [])
+        # 7. Sentiment — RSS 뉴스 자동 수집 후 Cortex 감성 분석
+        # news_texts가 명시적으로 전달된 경우 우선 사용 (테스트/오버라이드 용도)
+        # 전달되지 않은 경우(일반 호출) → STAGING.REAL_ESTATE_RSS_FEEDS 3단계 Fallback
+        if not news_texts:
+            news_texts = self._client.fetch_news_texts(
+                danji_name=info["danji"],
+                sgg=sgg,
+                sd=sd,
+            )
+        sentiment_score, d_sentiment = self.sentiment.compute_score(news_texts)
         deductions.append(d_sentiment)
 
         # 8. Adaptive jeonse floor
