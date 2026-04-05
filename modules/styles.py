@@ -192,6 +192,13 @@ section[data-testid="stSidebar"] {{
     background: #0A0E16;
     border-right: 1px solid {BORDER};
 }}
+
+/* ── 목표 단지 설정 expander 강조 — 리포트 색상과 동기화 ── */
+section[data-testid="stSidebar"] details:has(summary *) summary {{
+    border-left: 3px solid {MINT};
+    padding-left: 8px;
+    border-radius: 0 4px 4px 0;
+}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -455,21 +462,32 @@ def render_danji_card(data: dict, label: str) -> None:
     jok = data["jeonse_safety_ok"]
     pok = data["pir_undervalue_ok"]
 
-    jok_style    = f"style='color:{MINT};'" if jok else f"style='color:{RED_NEO};'"
-    pok_style    = f"style='color:{MINT};'" if pok else ""
-    chobuma_text = f"<b style='color:{MINT};'>초품아 ×1.5</b>" if data["is_chobuma"] else "— 일반"
+    # 현재 단지: 무채색 톤다운 / 목표 단지: 민트 강조
+    is_target      = (label == "목표 단지")
+    accent_color   = MINT if is_target else "#445566"
+    card_border    = f"border-color:{MINT}55;" if is_target else "border-color:#2A3040;"
+    label_bg       = f"background:{MINT}22;color:{MINT};border:1px solid {MINT}55;" if is_target else \
+                     "background:#1E2329;color:#667788;border:1px solid #2A3040;"
+    name_color     = "#E8EAF0" if is_target else "#667788"
+    score_opacity  = "" if is_target else "opacity:0.55;"
+
+    jok_style    = f"style='color:{accent_color};'" if jok else f"style='color:{RED_NEO};'"
+    pok_style    = f"style='color:{accent_color};'" if pok else ""
+    chobuma_text = f"<b style='color:{accent_color};'>초품아 ×1.5</b>" if data["is_chobuma"] else "— 일반"
 
     st.markdown(
-        f"<div class='card'>"
-        f"<div class='section-header'>{label}</div>"
-        f"<div style='font-size:18px;font-weight:700;color:#E8EAF0;margin-bottom:4px;'>{data['danji_name']}</div>"
+        f"<div class='card' style='{card_border}'>"
+        f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+        f"<span style='{label_bg}border-radius:12px;padding:2px 12px;font-size:11px;font-weight:700;'>{label}</span>"
+        f"</div>"
+        f"<div style='font-size:18px;font-weight:700;color:{name_color};margin-bottom:4px;'>{data['danji_name']}</div>"
         f"<div style='font-size:12px;color:#445566;margin-bottom:16px;'>{data['sgg']} · {data['emd']}</div>"
-        f"<div style='display:flex;align-items:baseline;gap:12px;margin-bottom:8px;'>"
+        f"<div style='display:flex;align-items:baseline;gap:12px;margin-bottom:8px;{score_opacity}'>"
         f"  <span class='score-value {cls}' style='font-size:48px;'>{s}</span>"
         f"  <span style='font-size:16px;color:#445566;'>pt</span>"
         f"</div>"
         f"<hr style='border-color:{BORDER};margin:12px 0;'>"
-        f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;'>"
+        f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:{name_color};'>"
         f"  <div>매매가: <b>{data['latest_meme_price_man_won']/10000:.1f}억</b></div>"
         f"  <div>전세가: <b>{data['latest_jeonse_price_man_won']/10000:.1f}억</b></div>"
         f"  <div>전세가율: <b {jok_style}>{data['jeonse_ratio']*100:.1f}%</b></div>"
@@ -487,7 +505,13 @@ def render_danji_card(data: dict, label: str) -> None:
 def render_key_metrics(cur_data: dict) -> None:
     """핵심 지표 4열 + 생활/감성 2열 렌더링."""
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>핵심 지표</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='section-header'>"
+        f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
+        f"border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:8px;'>목표 단지</span>"
+        f"🎯 핵심 지표</div>",
+        unsafe_allow_html=True,
+    )
     m1, m2, m3, m4 = st.columns(4)
 
     jrate      = cur_data["jeonse_ratio"]
@@ -586,7 +610,13 @@ def render_key_metrics(cur_data: dict) -> None:
 def render_spatial_risk(cur_data: dict) -> None:
     """Spatial Risk 패널 — 본 구 + 인접 구 Spillover 신호등."""
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<div class='section-header'>Spatial Risk — 인접구 공급 신호</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='section-header'>"
+        f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
+        f"border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:8px;'>목표 단지</span>"
+        f"🎯 공급 위험 신호 (Spatial Risk)</div>",
+        unsafe_allow_html=True,
+    )
     spill     = cur_data["spillover_detail"]
     own_score = spill["own_score"]
     st.markdown(

@@ -68,7 +68,11 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
         with st.expander("현재 단지 설정", expanded=True):
             selected_current = render_cascading_selector(danji_list, "cur")
 
-        with st.expander("목표 단지 설정", expanded=False):
+        st.markdown(
+            f"<div style='height:4px;background:linear-gradient(90deg,{MINT}44,{MINT});border-radius:2px;margin:4px 0 2px 0;'></div>",
+            unsafe_allow_html=True,
+        )
+        with st.expander("🎯 목표 단지 설정", expanded=False):
             selected_target = render_cascading_selector(danji_list, "tgt")
 
         if selected_current and selected_target:
@@ -125,10 +129,27 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         unsafe_allow_html=True,
     )
     st.markdown(
-        f"<div style='font-size:12px;color:#445566;margin-bottom:24px;'>"
-        f"{cur_data['analysis_date']} &nbsp;|&nbsp; "
-        f"{cur_data['danji_name']} ({cur_data['sgg']}) &nbsp;|&nbsp; "
-        f"<span style='color:{MINT}'>Richgo-Cortex AI Model C+</span>"
+        f"<div style='font-size:12px;color:#445566;margin-bottom:8px;'>"
+        f"{tgt_data['analysis_date']} &nbsp;|&nbsp; "
+        f"현재: <span style='color:#667788;'>{cur_data['danji_name']}</span>"
+        f" &nbsp;→&nbsp; 목표: <b style='color:{MINT};'>{tgt_data['danji_name']}</b>"
+        f" &nbsp;|&nbsp; <span style='color:{MINT}'>Richgo-Cortex AI Model C+</span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    # 🎯 목표 단지 분석 리포트 타이틀 배너
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:16px;"
+        f"background:linear-gradient(135deg,#0A1A10 0%,#0D1F18 100%);"
+        f"border:1px solid {MINT}44;border-left:4px solid {MINT};"
+        f"border-radius:8px;padding:14px 20px;margin-bottom:20px;'>"
+        f"<span style='font-size:22px;font-weight:900;color:{MINT};letter-spacing:-0.5px;'>"
+        f"🎯 목표 단지 분석 리포트</span>"
+        f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}55;"
+        f"border-radius:20px;padding:4px 14px;font-size:13px;font-weight:700;'>"
+        f"목표: {tgt_data['danji_name']}</span>"
+        f"<span style='font-size:12px;color:#445566;margin-left:auto;'>"
+        f"{tgt_data['sgg']} · {tgt_data['emd']}</span>"
         f"</div>",
         unsafe_allow_html=True,
     )
@@ -139,18 +160,25 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
     with col_gauge:
         trigger_html = (
             f"<div style='color:{MINT};font-size:12px;font-weight:700;margin-top:8px;'>즉시 실행 트리거 발동</div>"
-            if cur_data["execution_trigger"] else ""
+            if tgt_data["execution_trigger"] else ""
         )
         st.markdown(
-            f"<div class='card' style='height:100%;display:flex;flex-direction:column;justify-content:center;'>"
-            f"<div class='section-header' title='여러 지표를 종합한 상급지 이동 타당도 점수입니다.'>목표 단지 이동 시 종합 가치 점수</div>"
-            f"<div class='score-value {score_class(cur_data['s_alpha'])}' id='main-score'>{cur_data['s_alpha']}</div>"
+            f"<div class='card' style='height:100%;display:flex;flex-direction:column;justify-content:center;"
+            f"border-color:{MINT}44;'>"
+            f"<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
+            f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}55;"
+            f"border-radius:12px;padding:2px 10px;font-size:11px;font-weight:700;'>목표 단지</span>"
+            f"<span style='font-size:12px;color:#445566;font-weight:600;'>{tgt_data['danji_name']}</span>"
+            f"</div>"
+            f"<div class='section-header' style='margin-top:6px;' title='여러 지표를 종합한 상급지 이동 타당도 점수입니다.'>"
+            f"목표 단지 종합 가치 점수</div>"
+            f"<div class='score-value {score_class(tgt_data['s_alpha'])}' id='main-score'>{tgt_data['s_alpha']}</div>"
             f"<div style='color:#445566;font-size:11px;margin-top:12px;'>"
-            f"Band 보정 전: {cur_data['s_alpha_before_band']}pt &nbsp;"
-            f"PIR 조정: {cur_data['pir_band_adjustment']:+.0f}pt"
+            f"Band 보정 전: {tgt_data['s_alpha_before_band']}pt &nbsp;"
+            f"PIR 조정: {tgt_data['pir_band_adjustment']:+.0f}pt"
             f"</div>{trigger_html}</div>"
             f"<iframe srcdoc=\"<script>"
-            f"const target={cur_data['s_alpha']};let current=0;"
+            f"const target={tgt_data['s_alpha']};let current=0;"
             f"const stepTime=Math.max(10,Math.floor(1000/target));"
             f"const timer=setInterval(()={{current+=1;"
             f"window.parent.document.querySelectorAll('.score-value').forEach(el=>{{if(el.id==='main-score')el.innerText=current;}});"
@@ -160,7 +188,7 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         )
 
     with col_metrics:
-        render_key_metrics(cur_data)
+        render_key_metrics(tgt_data)
 
     # AI Executive Summary
     st.markdown(
@@ -184,22 +212,28 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
 
     with col_temporal:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.markdown("<div class='section-header'>Temporal Band — 과거 5년 대비 가격 수준</div>", unsafe_allow_html=True)
-        st.plotly_chart(build_pir_band_chart(cur_data), use_container_width=True, config={"displayModeBar": False})
-        idx     = cur_data["pir_relative_index"]
+        st.markdown(
+            f"<div class='section-header'>"
+            f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
+            f"border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:8px;'>목표 단지</span>"
+            f"🎯 가격 수준 (Temporal Band — 과거 5년 대비)</div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(build_pir_band_chart(tgt_data), use_container_width=True, config={"displayModeBar": False})
+        idx     = tgt_data["pir_relative_index"]
         idx_clr = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
         adj_lbl = "+15pt" if idx < 0.85 else ("-10pt" if idx > 1.15 else "±0pt")
         st.markdown(
             f"<div style='font-size:12px;color:#445566;'>"
-            f"역사적 평균 대비 현재 가격의 저렴함: <span style='color:{idx_clr};font-weight:700;'>{idx:.3f}</span>"
-            f" &nbsp;|&nbsp; <span style='color:{idx_clr};'>{cur_data['pir_band_label']}</span>"
+            f"역사적 평균 대비 목표 단지 가격의 저렴함: <span style='color:{idx_clr};font-weight:700;'>{idx:.3f}</span>"
+            f" &nbsp;|&nbsp; <span style='color:{idx_clr};'>{tgt_data['pir_band_label']}</span>"
             f" (<span style='color:{idx_clr};'>{adj_lbl}</span> 조정)</div>",
             unsafe_allow_html=True,
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_spatial:
-        render_spatial_risk(cur_data)
+        render_spatial_risk(tgt_data)
 
     # ROW 3: Comparison Simulator
     st.markdown(
