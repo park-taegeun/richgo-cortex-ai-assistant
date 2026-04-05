@@ -206,10 +206,15 @@ class SnowflakeClient:
             cur.close()
 
         if not row or row[0] is None or row[1] is None or row[1] == 0:
+            print(f"🔍 [DATA TRACE] fetch_price_momentum | danji_id={danji_id}"
+                  f" | result=None → momentum_pct=0.0 (데이터 없음)")
             return {"recent_avg": 0.0, "prior_avg": 0.0, "momentum_pct": 0.0}
 
         recent, prior = float(row[0]), float(row[1])
         momentum_pct = round((recent - prior) / prior * 100, 4)
+        print(f"🔍 [DATA TRACE] fetch_price_momentum | danji_id={danji_id}"
+              f" | recent_avg={recent:.0f} | prior_avg={prior:.0f}"
+              f" | momentum_pct={momentum_pct:+.4f}%")
         return {"recent_avg": recent, "prior_avg": prior, "momentum_pct": momentum_pct}
 
     def fetch_population_net(self, sgg: str, months: int = 6) -> float:
@@ -239,8 +244,22 @@ class SnowflakeClient:
             cur.close()
 
         if not row or row[0] is None:
+            print(f"🔍 [DATA TRACE] fetch_population_net | sgg={sgg}"
+                  f" | result=None → population_net=0.0 (데이터 없음)")
             return 0.0
-        return float(row[0])
+
+        val = float(row[0])
+        # ── 스케일 진단: 절대 인구수가 반환될 경우 경고 ─────────────────────────
+        if abs(val) > 50000:
+            print(f"⚠️  [DATA TRACE] fetch_population_net | sgg={sgg}"
+                  f" | population_net={val:+.0f} → 절대 인구수 의심 (>>50, 임계값 무의미)")
+        elif abs(val) > 500:
+            print(f"⚠️  [DATA TRACE] fetch_population_net | sgg={sgg}"
+                  f" | population_net={val:+.0f} → 정규화 기준 검토 필요")
+        else:
+            print(f"🔍 [DATA TRACE] fetch_population_net | sgg={sgg}"
+                  f" | population_net={val:+.0f} (순이동 건수)")
+        return val
 
     def fetch_population_movement(self, sgg: str, months: int = 36) -> list:
         """REGION_POPULATION_MOVEMENT — SGG net migration."""

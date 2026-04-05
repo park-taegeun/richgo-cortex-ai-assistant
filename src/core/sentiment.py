@@ -73,33 +73,52 @@ class SentimentAnalyzer:
         """
         뉴스 RSS 데이터 부재 시 가격 모멘텀 + 인구 유입으로 대체 심리 점수 산출.
 
-        Proxy 산출 기준 (가격 모멘텀):
-          momentum > +5%  → +3.0  (시장 급등 심리)
-          momentum > +2%  → +1.5  (상승 심리)
-          -2% ~ +2%       →  0.0  (중립)
-          momentum < -2%  → -1.5  (하락 심리)
-          momentum < -5%  → -3.0  (시장 급락 심리)
+        산식: Score = (Price_Change * 0.7) + (Pop_Flow_Ratio * 0.3)
 
-        인구 유입 보정 (±0.5):
-          net_inflow > 50  → +0.5
-          net_outflow < -50 → -0.5
+        Price_Change 기여 (가중 0.7):
+          momentum_pct × 0.5 → [-5, +5] 연속 스케일
+          (±10% 가격 변화 = ±5.0 최대 점수)
+
+        Pop_Flow_Ratio 기여 (가중 0.3):
+          population_net을 POP_SCALE(3,000명)으로 정규화 → [-1.0, +1.0]
+          × 1.5 → 최대 ±1.5pt 기여
+          ※ 절대 인구수(>10,000)가 반환될 경우 POP_SCALE을 자동 상향 조정
 
         Returns: (proxy_score: float [-5~+5], deduction: float)
-        Deduction: -0.10 (프록시 사용 감점 — 직접 뉴스 분석 대비 신뢰도 낮음)
+        Deduction: -0.10 (프록시 사용 감점)
         """
-        if momentum_pct > 5.0:
-            base = 3.0
-        elif momentum_pct > 2.0:
-            base = 1.5
-        elif momentum_pct < -5.0:
-            base = -3.0
-        elif momentum_pct < -2.0:
-            base = -1.5
+        # ── 데이터 없음 → 0.0 명시 출력 (기본값 +0.5 완전 제거) ──────────────
+        if momentum_pct == 0.0 and population_net == 0.0:
+            print("⚠️  [PROXY] 모멘텀·인구 데이터 모두 누락 → 심리 점수 0.0 (데이터 누락)")
+            return 0.0, 0.10
+
+        # ── Price_Change 기여 ────────────────────────────────────────────────
+        # momentum_pct × 0.5 → ±5.0 연속 스케일 (±10% 매매가 변화 = ±5.0)
+        price_component = max(-5.0, min(5.0, momentum_pct * 0.5))
+
+        # ── Pop_Flow_Ratio 기여 ──────────────────────────────────────────────
+        # 스케일 자동 감지: |population_net| > 10,000 이면 절대 인구수로 판단
+        if abs(population_net) > 10_000:
+            POP_SCALE = 500_000.0  # 서울 자치구 총인구 기준 (~50만명)
+        elif abs(population_net) > 500:
+            POP_SCALE = 5_000.0   # 월 순이동 ±5,000명 기준
         else:
-            base = 0.0
+            POP_SCALE = 200.0     # 월 순이동 ±200명 기준 (소규모)
 
-        pop_adj = 0.5 if population_net > 50 else (-0.5 if population_net < -50 else 0.0)
-        proxy_score = round(max(-5.0, min(5.0, base + pop_adj)), 4)
+        pop_ratio     = max(-1.0, min(1.0, population_net / POP_SCALE))
+        pop_component = pop_ratio * 1.5  # [-1.5, +1.5] 기여
 
-        print(f"📊 [PROXY] momentum={momentum_pct:+.2f}% | pop_net={population_net:.0f} → proxy_score={proxy_score:+.4f}")
+        # ── 최종 산식 적용 ───────────────────────────────────────────────────
+        proxy_score = round(
+            max(-5.0, min(5.0, price_component * 0.7 + pop_component * 0.3)),
+            4,
+        )
+
+        print(
+            f"📊 [PROXY FORMULA] "
+            f"momentum={momentum_pct:+.2f}% → price={price_component:+.2f}pt (×0.7={price_component*0.7:+.2f}) | "
+            f"pop_net={population_net:+.0f} (scale={POP_SCALE:.0f}) "
+            f"→ pop_ratio={pop_ratio:+.3f} → pop={pop_component:+.2f}pt (×0.3={pop_component*0.3:+.2f}) | "
+            f"final={proxy_score:+.4f}pt"
+        )
         return proxy_score, 0.10  # 프록시 사용 감점 -10%
