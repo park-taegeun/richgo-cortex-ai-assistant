@@ -2,10 +2,12 @@
 Snowflake Cortex AI — news sentiment analysis.
 
 Confirmed SQL pattern: SELECT SNOWFLAKE.CORTEX.SENTIMENT('text') AS s
+CORTEX.COMPLETE:       SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', prompt) AS r
 Banned pattern:        TRY_CAST(AI_SENTIMENT(...) AS DOUBLE) → __round__ error
 Scale:                 raw FLOAT (-1~+1) × 5.0 in Python → -5~+5
 """
 import os
+import re
 from src.utils.snowflake_client import SnowflakeClient
 
 NEWS_MIN_SAMPLE           = int(os.getenv("NEWS_MIN_SAMPLE",              "3"))
@@ -76,6 +78,87 @@ class SentimentAnalyzer:
             f"신뢰도 감점: -{deduction:.2f}"
         )
         return scaled, deduction  # -5 ~ +5
+
+    @staticmethod
+    def build_cortex_prompt(
+        danji_name: str,
+        sgg: str,
+        momentum_pct: float,
+        population_net: float,
+        jeonse_ratio: float,
+        supply_score: float,
+    ) -> str:
+        """
+        실시간 시장 지표 → Cortex LLM 직접 추론용 한국어 프롬프트 생성.
+
+        Returns a prompt that asks the model for a single float in [-1.0, +1.0].
+        """
+        return (
+            f"현재 {danji_name}({sgg})의 최근 3개월 가격 모멘텀은 {momentum_pct:+.1f}%이며, "
+            f"해당 지역구의 순인구 유입은 {population_net:+.0f}명입니다. "
+            f"전세가율은 {jeonse_ratio*100:.0f}%, 신규 공급 안전도는 {supply_score:.0f}점입니다. "
+            f"이 수치들을 바탕으로 현재 부동산 시장의 심리 온도를 "
+            f"-1.0(매우 차가움)에서 1.0(매우 뜨거움) 사이의 숫자 하나로만 답하라. "
+            f"숫자만 출력하라. 예시: 0.3"
+        )
+
+    def compute_cortex_complete(
+        self,
+        danji_name: str,
+        sgg: str,
+        momentum_pct: float,
+        population_net: float,
+        jeonse_ratio: float,
+        supply_score: float,
+    ) -> tuple:
+        """
+        SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', prompt) 호출 → 감성 점수.
+
+        LLM이 [-1.0, +1.0] float 하나를 반환하면 × 5.0 → [-5, +5] 스케일.
+        파싱 실패 또는 예외 시 (None, 0.10) 반환 → 호출자가 fallback 결정.
+
+        Returns: (scaled_score: float | None, deduction: float)
+        """
+        prompt = self.build_cortex_prompt(
+            danji_name=danji_name,
+            sgg=sgg,
+            momentum_pct=momentum_pct,
+            population_net=population_net,
+            jeonse_ratio=jeonse_ratio,
+            supply_score=supply_score,
+        )
+        cur = self.client._cur()
+        try:
+            cur.execute(
+                "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
+                (prompt,)
+            )
+            row = cur.fetchone()
+            if not row or row[0] is None:
+                return None, 0.10
+
+            raw_text = str(row[0]).strip()
+            # Extract first float-like token from LLM response
+            match = re.search(r"-?\d+(?:\.\d+)?", raw_text)
+            if not match:
+                print(f"⚠️  [CORTEX COMPLETE] 파싱 실패 — raw='{raw_text[:80]}'")
+                return None, 0.10
+
+            raw_val = float(match.group())
+            raw_val = max(-1.0, min(1.0, raw_val))   # clamp to [-1, +1]
+            scaled  = round(raw_val * 5.0, 4)        # → [-5, +5]
+
+            print(
+                f"🧠 [CORTEX COMPLETE] {danji_name}({sgg}) | "
+                f"raw='{raw_text[:40]}' | parsed={raw_val:+.3f} | scaled={scaled:+.4f}pt"
+            )
+            return scaled, 0.05   # 신뢰도 감점 -5% (COMPLETE는 소폭 적용)
+
+        except Exception as e:
+            print(f"⚠️  [CORTEX COMPLETE] 호출 실패 — {e}")
+            return None, 0.10
+        finally:
+            cur.close()
 
     @staticmethod
     def build_market_narratives(

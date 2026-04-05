@@ -677,6 +677,10 @@ def render_key_metrics(cur_data: dict) -> None:
         sent_label         = "Snowflake Cortex AI 뉴스 심리"
         sent_sublabel      = "✅ Snowflake Cortex AI 실시간 뉴스 분석 완료"
         sent_sublabel_color = MINT
+    elif sent_source == "cortex_complete":
+        sent_label         = "Snowflake Cortex AI 지표 기반 심층 분석"
+        sent_sublabel      = "✅ Snowflake Cortex AI 지표 기반 심층 분석 완료"
+        sent_sublabel_color = MINT
     elif sent_source == "cortex_market":
         sent_label         = "Snowflake Cortex AI 시장 분석"
         sent_sublabel      = "✅ Snowflake Cortex AI 시장 지표 분석 완료 (가격·인구·전세·공급)"

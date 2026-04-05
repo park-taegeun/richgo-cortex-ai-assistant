@@ -334,6 +334,14 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
             f"감성 점수 절댓값 <b>{sent_abs:.1f}pt</b> — "
             + ("매수 주도권이 회복 중입니다." if sent > 0 else "매도 우위 국면이 지속 중입니다.")
         )
+    elif sent_source == "cortex_complete":
+        m_text = (
+            f"<b style='color:{_MINT};'>✅ Snowflake Cortex AI (Mistral-7B)</b>가 "
+            f"가격 모멘텀·인구·전세·공급 지표를 직접 추론하여 시장 심리를 판단했습니다.<br>"
+            f"실시간 시장 지표를 Cortex LLM이 종합 추론한 결과, "
+            f"시장 심리 <b style='color:{m_color};'>{m_state}({sent:+.1f}pt)</b> — "
+            + ("긍정 시그널이 우세합니다." if sent > 0 else "부정 시그널이 우세합니다.")
+        )
     elif sent_source == "cortex_market":
         m_text = (
             f"<b style='color:{_MINT};'>✅ Snowflake Cortex AI</b>가 가격 모멘텀·인구·전세·공급 "

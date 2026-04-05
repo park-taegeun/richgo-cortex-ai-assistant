@@ -253,35 +253,54 @@ class RichgoCortexEngine:
             sentiment_source = "cortex_news"
 
         else:
-            # Path C: 시장 지표 → 서술문 → Cortex (RSS 테이블 없을 때 주경로)
+            # RSS 없음 → 시장 지표 공통 수집
             momentum_data  = self._client.fetch_price_momentum(danji_id)
             population_net = self._client.fetch_population_net(sgg)
 
-            narratives = self.sentiment.build_market_narratives(
+            # Path C1: CORTEX.COMPLETE('mistral-7b') — LLM 직접 시장 추론 (주경로)
+            cc_score, d_sentiment = self.sentiment.compute_cortex_complete(
+                danji_name=info["danji"],
                 sgg=sgg,
-                sd=sd,
                 momentum_pct=momentum_data["momentum_pct"],
                 population_net=population_net,
                 jeonse_ratio=jeonse_ratio,
                 supply_score=supply_score_final,
             )
 
-            if narratives:
-                sentiment_score, d_sentiment = self.sentiment.compute_score(narratives)
-                sentiment_source = "cortex_market"
+            if cc_score is not None:
+                sentiment_score  = cc_score
+                sentiment_source = "cortex_complete"
                 print(
-                    f"✅ [CORTEX MARKET] {info['danji']} — "
-                    f"시장 서술문 {len(narratives)}개 Cortex 분석 완료 | "
-                    f"score={sentiment_score:+.4f}pt"
+                    f"✅ [CORTEX COMPLETE] {info['danji']} — "
+                    f"Mistral-7B 직접 추론 완료 | score={sentiment_score:+.4f}pt"
                 )
             else:
-                # Path D: 최후 수학적 Proxy
-                sentiment_score, d_sentiment = self.sentiment.compute_proxy_score(
+                # Path C2: 시장 지표 → 한국어 서술문 → CORTEX.SENTIMENT (Fallback)
+                narratives = self.sentiment.build_market_narratives(
+                    sgg=sgg,
+                    sd=sd,
                     momentum_pct=momentum_data["momentum_pct"],
                     population_net=population_net,
+                    jeonse_ratio=jeonse_ratio,
+                    supply_score=supply_score_final,
                 )
-                sentiment_proxy_used = True
-                sentiment_source     = "proxy"
+
+                if narratives:
+                    sentiment_score, d_sentiment = self.sentiment.compute_score(narratives)
+                    sentiment_source = "cortex_market"
+                    print(
+                        f"✅ [CORTEX MARKET] {info['danji']} — "
+                        f"시장 서술문 {len(narratives)}개 Cortex 분석 완료 | "
+                        f"score={sentiment_score:+.4f}pt"
+                    )
+                else:
+                    # Path D: 최후 수학적 Proxy
+                    sentiment_score, d_sentiment = self.sentiment.compute_proxy_score(
+                        momentum_pct=momentum_data["momentum_pct"],
+                        population_net=population_net,
+                    )
+                    sentiment_proxy_used = True
+                    sentiment_source     = "proxy"
 
         print(
             f"📡 [PIPELINE] {info['danji']} | "
