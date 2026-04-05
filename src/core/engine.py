@@ -228,11 +228,18 @@ class RichgoCortexEngine:
         supply_score_raw = spillover_detail["own_score"]
         deductions.append(d_supply)
 
-        # 7. Sentiment — RSS 뉴스 자동 수집 후 Cortex 감성 분석
-        # news_texts가 명시적으로 전달된 경우 우선 사용 (테스트/오버라이드 용도)
-        # 전달되지 않은 경우(일반 호출) → STAGING.REAL_ESTATE_RSS_FEEDS 3단계 Fallback
-        # RSS 테이블 부재 시 → 가격 모멘텀 + 인구 유입 Proxy Score 자동 전환
+        # 7. Sentiment — 3단계 파이프라인
+        #
+        #  ┌─ Path A: 명시적 news_texts 전달 (테스트/오버라이드)
+        #  ├─ Path B: STAGING.REAL_ESTATE_RSS_FEEDS 3단계 Fallback → Cortex
+        #  ├─ Path C: RSS 테이블 부재 시 → 시장 지표 서술문 생성 → Cortex (★ 주경로)
+        #  └─ Path D: Cortex 실패 시 → 수학적 Proxy (최후 보루)
+        #
+        #  sentiment_source: "cortex_news" | "cortex_market" | "proxy"
         sentiment_proxy_used = False
+        sentiment_source     = "proxy"  # 기본값 — 아래에서 덮어쓰기
+
+        # Path A / B: 명시 전달 또는 RSS 자동 수집
         if not news_texts:
             news_texts = self._client.fetch_news_texts(
                 danji_name=info["danji"],
@@ -240,19 +247,48 @@ class RichgoCortexEngine:
                 sd=sd,
             )
 
+        # Path A / B 성공
         if news_texts:
             sentiment_score, d_sentiment = self.sentiment.compute_score(news_texts)
+            sentiment_source = "cortex_news"
+
         else:
-            # Proxy 전환: 가격 모멘텀 + 인구 유입
+            # Path C: 시장 지표 → 서술문 → Cortex (RSS 테이블 없을 때 주경로)
             momentum_data  = self._client.fetch_price_momentum(danji_id)
             population_net = self._client.fetch_population_net(sgg)
-            sentiment_score, d_sentiment = self.sentiment.compute_proxy_score(
+
+            narratives = self.sentiment.build_market_narratives(
+                sgg=sgg,
+                sd=sd,
                 momentum_pct=momentum_data["momentum_pct"],
                 population_net=population_net,
+                jeonse_ratio=jeonse_ratio,
+                supply_score=supply_score_final,
             )
-            sentiment_proxy_used = True
 
-        print(f"📡 [DEBUG] Danji: {info['danji']} | news_count: {len(news_texts)} | proxy: {sentiment_proxy_used} | Score: {sentiment_score:+.4f} | Deduction: {d_sentiment}")
+            if narratives:
+                sentiment_score, d_sentiment = self.sentiment.compute_score(narratives)
+                sentiment_source = "cortex_market"
+                print(
+                    f"✅ [CORTEX MARKET] {info['danji']} — "
+                    f"시장 서술문 {len(narratives)}개 Cortex 분석 완료 | "
+                    f"score={sentiment_score:+.4f}pt"
+                )
+            else:
+                # Path D: 최후 수학적 Proxy
+                sentiment_score, d_sentiment = self.sentiment.compute_proxy_score(
+                    momentum_pct=momentum_data["momentum_pct"],
+                    population_net=population_net,
+                )
+                sentiment_proxy_used = True
+                sentiment_source     = "proxy"
+
+        print(
+            f"📡 [PIPELINE] {info['danji']} | "
+            f"source={sentiment_source} | "
+            f"score={sentiment_score:+.4f}pt | "
+            f"deduction={d_sentiment}"
+        )
         deductions.append(d_sentiment)
 
         # 8. Adaptive jeonse floor
@@ -310,6 +346,7 @@ class RichgoCortexEngine:
             # ── 감성
             "sentiment_score":        sentiment_score,
             "sentiment_proxy_used":   sentiment_proxy_used,
+            "sentiment_source":       sentiment_source,
             # ── 단지 속성
             "living_score":           info.get("living_score"),
             "is_chobuma":             is_chobuma,

@@ -66,7 +66,131 @@ class SentimentAnalyzer:
             deduction += 0.10
 
         raw_avg = sum(scores) / len(scores)
-        return round(raw_avg * 5.0, 4), deduction  # -5 ~ +5
+        scaled  = round(raw_avg * 5.0, 4)  # -5 ~ +5
+
+        print(
+            f"📡 [CORTEX ACTUAL] 분석된 텍스트 수: {len(news_texts)} | "
+            f"Cortex 성공: {len(scores)} | "
+            f"raw_avg: {raw_avg:+.4f} | "
+            f"평균 감성 점수: {scaled:+.4f}pt | "
+            f"신뢰도 감점: -{deduction:.2f}"
+        )
+        return scaled, deduction  # -5 ~ +5
+
+    @staticmethod
+    def build_market_narratives(
+        sgg: str,
+        sd: str,
+        momentum_pct: float,
+        population_net: float,
+        jeonse_ratio: float,
+        supply_score: float,
+    ) -> list:
+        """
+        DB 실측 데이터(가격/인구/전세/공급)를 Cortex SENTIMENT 입력용
+        한국어 시장 서술문으로 변환.
+
+        RSS 뉴스 테이블 부재 시 Cortex를 시장 데이터에 직접 적용하는 경로.
+        생성된 텍스트는 실제 DB 수치를 기반으로 하므로 프록시와 구분됨.
+
+        Returns: list[str] — 4~5개 한국어 서술문
+        """
+        texts = []
+
+        # ── 1. 가격 모멘텀 ────────────────────────────────────────────────────
+        if momentum_pct > 3.0:
+            texts.append(
+                f"{sgg} 아파트 매매가가 최근 3개월간 {momentum_pct:.1f}% 급등했습니다. "
+                f"강한 매수세로 시장 열기가 매우 뜨겁습니다."
+            )
+        elif momentum_pct > 1.0:
+            texts.append(
+                f"{sgg} 아파트 매매가가 최근 3개월간 {momentum_pct:.1f}% 상승했습니다. "
+                f"매수 심리가 회복되며 긍정적인 흐름이 이어지고 있습니다."
+            )
+        elif momentum_pct >= -1.0:
+            texts.append(
+                f"{sgg} 아파트 매매가는 최근 3개월간 보합세({momentum_pct:+.1f}%)를 "
+                f"유지하고 있습니다. 시장이 관망세에 접어들었습니다."
+            )
+        elif momentum_pct >= -3.0:
+            texts.append(
+                f"{sgg} 아파트 매매가가 최근 3개월간 {momentum_pct:.1f}% 하락했습니다. "
+                f"매도 우위 국면으로 관망세가 우세합니다."
+            )
+        else:
+            texts.append(
+                f"{sgg} 아파트 매매가가 최근 3개월간 {momentum_pct:.1f}% 급락했습니다. "
+                f"매도 물량이 급증하고 시장 공포감이 높아지고 있습니다."
+            )
+
+        # ── 2. 인구 순이동 ────────────────────────────────────────────────────
+        if population_net > 200:
+            texts.append(
+                f"{sgg}의 최근 인구 순유입이 {population_net:.0f}명으로 활발합니다. "
+                f"주거 수요가 견조하게 증가하고 있습니다."
+            )
+        elif population_net > 50:
+            texts.append(
+                f"{sgg}의 인구가 {population_net:.0f}명 소폭 순유입되었습니다. "
+                f"수요가 안정적으로 유지되고 있습니다."
+            )
+        elif population_net >= -50:
+            texts.append(
+                f"{sgg}의 인구 이동은 보합 수준({population_net:+.0f}명)입니다. "
+                f"주거 수요에 큰 변화가 없습니다."
+            )
+        elif population_net >= -200:
+            texts.append(
+                f"{sgg}의 인구가 {abs(population_net):.0f}명 소폭 유출되었습니다. "
+                f"수요가 다소 위축되는 추세입니다."
+            )
+        else:
+            texts.append(
+                f"{sgg}의 인구가 {abs(population_net):.0f}명 순유출되었습니다. "
+                f"지역 선호도 하락으로 주거 수요가 감소하고 있습니다."
+            )
+
+        # ── 3. 전세가율 (하방 방어력) ─────────────────────────────────────────
+        if jeonse_ratio >= 0.65:
+            texts.append(
+                f"{sgg} 아파트 전세가율이 {jeonse_ratio*100:.0f}%로 높아 "
+                f"하락장에서도 매매가 지지력이 탁월합니다. 안전 자산으로 평가됩니다."
+            )
+        elif jeonse_ratio >= 0.50:
+            texts.append(
+                f"{sgg} 아파트 전세가율은 {jeonse_ratio*100:.0f}%로 "
+                f"안정적인 수준을 유지하고 있습니다."
+            )
+        else:
+            texts.append(
+                f"{sgg} 아파트 전세가율이 {jeonse_ratio*100:.0f}%로 낮아 "
+                f"하락 시 자산 손실 리스크가 우려됩니다."
+            )
+
+        # ── 4. 공급 안전도 ────────────────────────────────────────────────────
+        if supply_score >= 70:
+            texts.append(
+                f"{sgg} 인근 신규 아파트 공급이 부족하여 기존 아파트 희소성이 높습니다. "
+                f"중장기 가격 상승 기대감이 형성되고 있습니다."
+            )
+        elif supply_score >= 40:
+            texts.append(
+                f"{sgg} 인근 신규 아파트 공급 물량은 적정 수준으로 "
+                f"가격에 미치는 영향이 제한적입니다."
+            )
+        else:
+            texts.append(
+                f"{sgg} 인근에 대규모 신규 아파트 입주가 예정되어 있어 "
+                f"가격 하락 압력이 우려됩니다."
+            )
+
+        print(
+            f"📝 [CORTEX MARKET] {sgg}({sd}) 시장 서술문 {len(texts)}개 생성 | "
+            f"momentum={momentum_pct:+.1f}% | pop={population_net:+.0f}명 | "
+            f"jeonse={jeonse_ratio*100:.0f}% | supply={supply_score:.0f}pt"
+        )
+        return texts
 
     @staticmethod
     def compute_proxy_score(momentum_pct: float, population_net: float = 0.0) -> tuple:

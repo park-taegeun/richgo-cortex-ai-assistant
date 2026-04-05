@@ -302,6 +302,7 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
     # ── 3. 시장 심리 (Sentiment) ───────────────────────────────────────────────
     sent        = tgt["sentiment_score"]
     proxy_used  = tgt.get("sentiment_proxy_used", False)
+    sent_source = tgt.get("sentiment_source", "proxy" if proxy_used else "cortex_news")
     sent_abs    = abs(sent)
 
     if sent > 1.0:
@@ -325,20 +326,27 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
         m_state = "부정 심화세"
         keywords = "'급매 출현', '하락 전망', '공포 매물'"
 
-    if proxy_used:
+    if sent_source == "cortex_news":
         m_text = (
-            f"<b style='color:{_YELLOW_NEO};'>⚠️ 뉴스 심리 엔진 연결 대기 중</b> — "
-            f"가격 모멘텀 + 인구 유입 데이터로 대체 분석한 결과, "
-            f"시장 심리 점수 <b style='color:{m_color};'>{sent:+.1f}pt ({m_state})</b>입니다.<br>"
-            f"Snowflake Cortex AI 뉴스 분석이 복구되면 더 정확한 진단이 가능합니다."
-        )
-    else:
-        m_text = (
-            f"Snowflake Cortex AI가 최신 뉴스 <b>1,000건</b>을 실시간 분석한 결과, "
+            f"Snowflake Cortex AI가 최신 뉴스 헤드라인을 실시간 분석한 결과, "
             f"{keywords} 키워드가 우세하여 시장 심리가 "
             f"<b style='color:{m_color};'>{m_state}({sent:+.1f}pt)</b>에 있습니다.<br>"
             f"감성 점수 절댓값 <b>{sent_abs:.1f}pt</b> — "
             + ("매수 주도권이 회복 중입니다." if sent > 0 else "매도 우위 국면이 지속 중입니다.")
+        )
+    elif sent_source == "cortex_market":
+        m_text = (
+            f"<b style='color:{_MINT};'>✅ Snowflake Cortex AI</b>가 가격 모멘텀·인구·전세·공급 "
+            f"지표를 한국어 시장 서술문으로 변환한 후 실시간 감성 분석을 수행했습니다.<br>"
+            f"시장 심리 <b style='color:{m_color};'>{m_state}({sent:+.1f}pt)</b> — "
+            + ("긍정 시그널이 우세합니다." if sent > 0 else "부정 시그널이 우세합니다.")
+        )
+    else:  # proxy
+        m_text = (
+            f"<b style='color:{_YELLOW_NEO};'>⚠️ Cortex 연결 대기 중</b> — "
+            f"가격 모멘텀 + 인구 유입 데이터로 대체 분석한 결과, "
+            f"시장 심리 점수 <b style='color:{m_color};'>{sent:+.1f}pt ({m_state})</b>입니다.<br>"
+            f"Snowflake Cortex AI 연결이 복구되면 더 정확한 진단이 가능합니다."
         )
     results.append({
         "icon": m_icon, "emoji": "🧬",

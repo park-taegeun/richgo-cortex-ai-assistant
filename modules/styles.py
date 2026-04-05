@@ -668,17 +668,23 @@ def render_key_metrics(cur_data: dict) -> None:
         f"</div>",
         unsafe_allow_html=True,
     )
-    sent       = cur_data["sentiment_score"]
-    proxy_used = cur_data.get("sentiment_proxy_used", False)
-    sent_cls   = "metric-ok" if sent > 0 else ("metric-bad" if sent < 0 else "metric-warn")
-    if proxy_used:
-        sent_label    = "시장 모멘텀 심리 (Proxy)"
-        sent_sublabel = "⚠️ 뉴스 심리 엔진 연결 중 — 가격 모멘텀 + 인구 유입으로 대체 분석"
+    sent           = cur_data["sentiment_score"]
+    proxy_used     = cur_data.get("sentiment_proxy_used", False)
+    sent_source    = cur_data.get("sentiment_source", "proxy" if proxy_used else "cortex_news")
+    sent_cls       = "metric-ok" if sent > 0 else ("metric-bad" if sent < 0 else "metric-warn")
+
+    if sent_source == "cortex_news":
+        sent_label         = "Snowflake Cortex AI 뉴스 심리"
+        sent_sublabel      = "✅ Snowflake Cortex AI 실시간 뉴스 분석 완료"
+        sent_sublabel_color = MINT
+    elif sent_source == "cortex_market":
+        sent_label         = "Snowflake Cortex AI 시장 분석"
+        sent_sublabel      = "✅ Snowflake Cortex AI 시장 지표 분석 완료 (가격·인구·전세·공급)"
+        sent_sublabel_color = MINT
+    else:  # proxy
+        sent_label         = "시장 모멘텀 심리 (Proxy)"
+        sent_sublabel      = "⚠️ Cortex 연결 대기 중 — 가격 모멘텀 + 인구 유입으로 대체 분석"
         sent_sublabel_color = YELLOW_NEO
-    else:
-        sent_label    = "Snowflake Cortex AI 뉴스 심리"
-        sent_sublabel = "Cortex LLM · 뉴스 실시간 분석"
-        sent_sublabel_color = "#445566"
     m6.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
         f"<div class='metric-label' "
