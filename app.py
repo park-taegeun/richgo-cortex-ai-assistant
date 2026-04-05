@@ -219,7 +219,22 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
             f"🎯 가격 수준 (Temporal Band — 과거 5년 대비)</div>",
             unsafe_allow_html=True,
         )
-        st.plotly_chart(build_pir_band_chart(tgt_data), use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(
+            build_pir_band_chart(tgt_data),
+            use_container_width=True,
+            config={
+                "scrollZoom": True,
+                "displayModeBar": True,
+                "modeBarButtonsToRemove": [
+                    "select2d", "lasso2d", "autoScale2d",
+                    "hoverClosestCartesian", "hoverCompareCartesian",
+                    "toggleSpikelines",
+                ],
+                "modeBarButtonsToAdd": ["pan2d"],
+                "displaylogo": False,
+                "toImageButtonOptions": {"filename": "pir_band_chart"},
+            },
+        )
         idx     = tgt_data["pir_relative_index"]
         idx_clr = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
         adj_lbl = "+15pt" if idx < 0.85 else ("-10pt" if idx > 1.15 else "±0pt")

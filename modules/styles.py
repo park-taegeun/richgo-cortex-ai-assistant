@@ -235,6 +235,12 @@ def build_pir_band_chart(result: dict) -> go.Figure:
 
     dot_color = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
 
+    # 툴팁용 customdata: [평균대비 %, 상태 레이블]
+    def _status(v: float) -> str:
+        if v > upper_5:   return "🚨 고평가"
+        if v < lower_5:   return "✅ 저평가"
+        return "⚖️ 적정"
+
     # 동적 상태 배지 텍스트
     if idx > 1.15:
         badge_text  = "🚨 역사적 고점 도달"
@@ -291,26 +297,44 @@ def build_pir_band_chart(result: dict) -> go.Figure:
         line=dict(color="#445566", width=1.5, dash="dash"),
         name=f"5yr 평균 ({avg:.1f})",
     ))
-    # PIR 히스토리
+    # PIR 히스토리 — 스마트 툴팁 포함
+    pct_vs_avg = [(v - avg) / avg * 100 for v in pir_series]
+    statuses   = [_status(v) for v in pir_series]
     fig.add_trace(go.Scatter(
         x=months, y=pir_series,
         mode="lines",
         line=dict(color="#4488FF", width=2.5),
         name="PIR 시계열",
         fill="tozeroy", fillcolor="rgba(68,136,255,0.05)",
+        customdata=list(zip(pct_vs_avg, statuses)),
+        hovertemplate=(
+            "<b>%{x}</b><br>"
+            "PIR: <b>%{y:.1f}년</b> (평균대비 %{customdata[0]:+.1f}%)<br>"
+            "상태: %{customdata[1]}"
+            "<extra></extra>"
+        ),
     ))
     # 현재 위치 — Glowing Dot
+    now_pct = (pir_now - avg) / avg * 100
     fig.add_trace(go.Scatter(
         x=[months[-1]], y=[pir_now],
         mode="markers+text",
         marker=dict(size=16, color=dot_color, line=dict(width=3, color=dot_color)),
-        text=[f" ▶ {pir_now:.1f}년\n{label}"],
+        text=[f" ▶ {pir_now:.1f}년"],
         textposition="top right",
         textfont=dict(color=dot_color, size=12, family="monospace"),
         name="현재 PIR",
+        customdata=[[now_pct, _status(pir_now)]],
+        hovertemplate=(
+            "<b>현재 위치</b><br>"
+            "PIR: <b>%{y:.1f}년</b> (평균대비 %{customdata[0]:+.1f}%)<br>"
+            "상태: %{customdata[1]}<br>"
+            f"판정: <b>{label}</b>"
+            "<extra></extra>"
+        ),
     ))
 
-    # 우측 상단 상태 배지
+    # ── 우측 상단 상태 배지 ──────────────────────────────────────────────────────
     fig.add_annotation(
         xref="paper", yref="paper",
         x=0.99, y=0.97,
@@ -325,19 +349,53 @@ def build_pir_band_chart(result: dict) -> go.Figure:
         opacity=0.9,
     )
 
+    # ── 점선 인라인 레이블 (우측 고정) ───────────────────────────────────────────
+    fig.add_annotation(
+        xref="paper", yref="y",
+        x=1.01, y=upper_5,
+        text="<b>🚨 위험 (상단)</b>",
+        showarrow=False,
+        xanchor="left",
+        font=dict(size=10, color=RED_NEO, family="monospace"),
+        bgcolor="rgba(255,75,75,0.12)",
+        borderpad=3,
+    )
+    fig.add_annotation(
+        xref="paper", yref="y",
+        x=1.01, y=lower_5,
+        text="<b>✅ 기회 (하단)</b>",
+        showarrow=False,
+        xanchor="left",
+        font=dict(size=10, color=MINT, family="monospace"),
+        bgcolor=f"rgba(0,255,170,0.12)",
+        borderpad=3,
+    )
+
     fig.update_layout(
         paper_bgcolor=CARD_BG,
         plot_bgcolor=BG_DARK,
         font=dict(color="#8892A4", size=11),
+        dragmode="pan",
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0,
             bgcolor="rgba(0,0,0,0)", font=dict(size=10),
         ),
-        margin=dict(l=12, r=12, t=36, b=12),
-        xaxis=dict(gridcolor=BORDER, showgrid=True, tickangle=-30, nticks=12, linecolor=BORDER),
-        yaxis=dict(gridcolor=BORDER, showgrid=True, linecolor=BORDER,
-                   title="PIR (년)", title_font=dict(size=11)),
-        height=280,
+        margin=dict(l=12, r=110, t=36, b=12),
+        xaxis=dict(
+            gridcolor=BORDER, showgrid=True, tickangle=-30, nticks=12, linecolor=BORDER,
+            fixedrange=False,
+        ),
+        yaxis=dict(
+            gridcolor=BORDER, showgrid=True, linecolor=BORDER,
+            title="PIR (년)", title_font=dict(size=11),
+            fixedrange=False,
+        ),
+        height=300,
+        hoverlabel=dict(
+            bgcolor="#0D1117",
+            bordercolor=MINT,
+            font=dict(color="#E8EAF0", size=12, family="monospace"),
+        ),
     )
     return fig
 
