@@ -6,7 +6,10 @@ from dotenv import load_dotenv
 import streamlit as st
 
 from modules.data_loader   import get_engine, get_all_danji_list, render_cascading_selector
-from modules.report_engine import build_ai_report, build_delta, ALPHA_TRIGGER_DELTA, ALPHA_TRIGGER_MIN
+from modules.report_engine import (
+    build_ai_report, build_delta, generate_detailed_logic,
+    ALPHA_TRIGGER_DELTA, ALPHA_TRIGGER_MIN,
+)
 from modules.styles import (
     inject_css,
     build_pir_band_chart,
@@ -197,15 +200,50 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         unsafe_allow_html=True,
     )
     report = build_ai_report(cur_data, tgt_data)
+    # ── Layer 1: 상시 노출 요약 ───────────────────────────────────────────────
     st.markdown(
         f"<div style='padding:22px;border-left:6px solid {report['color']};"
-        f"background:#11141A;margin-bottom:32px;border-radius:6px;"
+        f"background:#11141A;margin-bottom:8px;border-radius:6px;"
         f"box-shadow:0 4px 12px rgba(0,0,0,0.5);'>"
-        f"<div style='font-size:18px;font-weight:800;color:{report['color']};margin-bottom:8px;'>[AI 분석 결론]</div>"
-        f"<div style='font-size:16px;color:#E8EAF0;line-height:1.6;letter-spacing:-0.3px;'>{report['message']}</div>"
+        f"<div style='font-size:18px;font-weight:800;color:{report['color']};margin-bottom:8px;'>"
+        f"[AI 분석 결론]</div>"
+        f"<div style='font-size:16px;color:#E8EAF0;line-height:1.6;letter-spacing:-0.3px;'>"
+        f"{report['message']}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
+    # ── Layer 2: 심층 분석 Expander ───────────────────────────────────────────
+    with st.expander("🔍 AI 마스터의 5대 핵심 근거 및 데이터 정밀 진단"):
+        logic_items = generate_detailed_logic(cur_data, tgt_data)
+        for i, item in enumerate(logic_items):
+            icon     = item["icon"]
+            emoji    = item["emoji"]
+            title    = item["title"]
+            subtitle = item["subtitle"]
+            text     = item["text"]
+            color    = item["color"]
+            separator = "" if i == len(logic_items) - 1 else \
+                f"<hr style='border-color:#1E2329;margin:0;'/>"
+            st.markdown(
+                f"<div style='padding:16px 20px;background:#0D1117;"
+                f"border-left:4px solid {color};border-radius:0 6px 6px 0;"
+                f"margin-bottom:4px;'>"
+                f"<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>"
+                f"  <span style='font-size:20px;'>{emoji}</span>"
+                f"  <div>"
+                f"    <span style='font-size:14px;font-weight:800;color:{color};'>"
+                f"    {icon} {title}</span>"
+                f"    <span style='font-size:11px;color:#445566;margin-left:8px;font-family:monospace;'>"
+                f"    {subtitle}</span>"
+                f"  </div>"
+                f"</div>"
+                f"<div style='font-size:13px;color:#C8D0E0;line-height:1.7;padding-left:30px;'>"
+                f"{text}</div>"
+                f"</div>"
+                f"{separator}",
+                unsafe_allow_html=True,
+            )
+    st.markdown("<div style='margin-bottom:24px;'></div>", unsafe_allow_html=True)
 
     # ROW 2: PIR Band + Spatial Risk
     col_temporal, col_spatial = st.columns([3, 2])
