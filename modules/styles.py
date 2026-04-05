@@ -228,7 +228,39 @@ def build_pir_band_chart(result: dict) -> go.Figure:
 
     dot_color = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
 
+    # 동적 상태 배지 텍스트
+    if idx > 1.15:
+        badge_text  = "🚨 역사적 고점 도달"
+        badge_color = RED_NEO
+    elif idx < 0.85:
+        badge_text  = "✅ 저평가 구간 진입"
+        badge_color = MINT
+    else:
+        badge_text  = "⚖️ 중립 구간"
+        badge_color = YELLOW_NEO
+
+    y_max = avg * 1.6
+    y_mid_top = avg * 1.08
+    y_mid_bot = avg * 0.92
+
     fig = go.Figure()
+
+    # ── Zone Shading ──────────────────────────────────────────────────────────
+    # 빨간 구역 (High): upper_5 이상
+    fig.add_hrect(
+        y0=upper_5, y1=y_max,
+        fillcolor="rgba(255,0,0,0.1)", layer="below", line_width=0,
+    )
+    # 민트 구역 (Low): lower_5 이하
+    fig.add_hrect(
+        y0=0, y1=lower_5,
+        fillcolor="rgba(0,255,127,0.1)", layer="below", line_width=0,
+    )
+    # 회색 구역 (Mid): 평균 ±8%
+    fig.add_hrect(
+        y0=y_mid_bot, y1=y_mid_top,
+        fillcolor="rgba(128,128,128,0.1)", layer="below", line_width=0,
+    )
 
     # 위험 구간 상단 경계
     fig.add_trace(go.Scatter(
@@ -265,11 +297,26 @@ def build_pir_band_chart(result: dict) -> go.Figure:
         x=[months[-1]], y=[pir_now],
         mode="markers+text",
         marker=dict(size=16, color=dot_color, line=dict(width=3, color=dot_color)),
-        text=[f" ▶ {pir_now:.1f}yr\n{label}"],
+        text=[f" ▶ {pir_now:.1f}년\n{label}"],
         textposition="top right",
         textfont=dict(color=dot_color, size=12, family="monospace"),
         name="현재 PIR",
     ))
+
+    # 우측 상단 상태 배지
+    fig.add_annotation(
+        xref="paper", yref="paper",
+        x=0.99, y=0.97,
+        text=f"<b>{badge_text}</b>",
+        showarrow=False,
+        font=dict(size=12, color=badge_color, family="monospace"),
+        align="right",
+        bgcolor=CARD_BG,
+        bordercolor=badge_color,
+        borderwidth=1,
+        borderpad=6,
+        opacity=0.9,
+    )
 
     fig.update_layout(
         paper_bgcolor=CARD_BG,
@@ -426,7 +473,7 @@ def render_danji_card(data: dict, label: str) -> None:
         f"  <div>매매가: <b>{data['latest_meme_price_man_won']/10000:.1f}억</b></div>"
         f"  <div>전세가: <b>{data['latest_jeonse_price_man_won']/10000:.1f}억</b></div>"
         f"  <div>전세가율: <b {jok_style}>{data['jeonse_ratio']*100:.1f}%</b></div>"
-        f"  <div>PIR: <b {pok_style}>{data['pir']:.1f}yr</b></div>"
+        f"  <div>PIR: <b {pok_style}>{data['pir']:.1f}년</b></div>"
         f"  <div>공급점수: <b>{data['supply_score_final']:.1f}pt</b></div>"
         f"  <div>심리점수: <b>{data['sentiment_score']:+.1f}pt</b></div>"
         f"  <div>LIVING: <b>{data['living_score']}/100</b></div>"
@@ -446,6 +493,13 @@ def render_key_metrics(cur_data: dict) -> None:
     jrate      = cur_data["jeonse_ratio"]
     jfloor_pct = cur_data["jeonse_floor"] * 100
     jcls       = "metric-ok" if cur_data["jeonse_safety_ok"] else "metric-bad"
+    j_margin   = round(jrate * 100 - jfloor_pct, 1)
+    j_margin_color = MINT if j_margin >= 0 else RED_NEO
+    j_margin_text  = (
+        f"현재 대비 <b style='color:{j_margin_color};'>{j_margin:+.1f}%p의 추가 하락 방어력</b> 보유"
+        if j_margin >= 0
+        else f"<b style='color:{RED_NEO};'>역사적 안전 마진 {abs(j_margin):.1f}%p 미달 — 주의</b>"
+    )
     m1.markdown(
         f"<div class='metric-label' title='매매가 대비 전세가의 비율로, 하락장 방어력을 의미합니다. "
         f"현재 전세가율이 역사적 안전 마진보다 높을수록 하락장에서의 가격 방어력이 강해집니다.'>"
@@ -453,7 +507,8 @@ def render_key_metrics(cur_data: dict) -> None:
         f"<div class='metric-value {jcls}'>{jrate*100:.1f}%</div>"
         f"<div style='font-size:11px;color:#445566;'>"
         f"역사적 안전 마진: {jfloor_pct:.0f}% "
-        f"{'✅' if cur_data['jeonse_safety_ok'] else '⚠️'}</div>",
+        f"{'✅' if cur_data['jeonse_safety_ok'] else '⚠️'}</div>"
+        f"<div style='font-size:11px;margin-top:4px;'>{j_margin_text}</div>",
         unsafe_allow_html=True,
     )
 
@@ -467,7 +522,7 @@ def render_key_metrics(cur_data: dict) -> None:
         f"title='이 수치는 개인 소득이 아닌, 통계청 발표 서울 가구 중위 소득을 기준으로 한 "
         f"단지의 절대적 가격 높낮이입니다. 낮을수록 현재 가격이 소득 대비 저평가 상태입니다.'>"
         f"내 월급으로 이 집을 사려면 (연수) <span style='font-size:0.8em;color:#888;'>(▼낮을수록 유리)</span></div>"
-        f"<div class='metric-value {pir_cls}'>{pir:.1f}yr</div>"
+        f"<div class='metric-value {pir_cls}'>{pir:.1f}년</div>"
         f"<div style='font-size:11px;color:#445566;'>"
         f"서울 평균 소득 기준 &nbsp;|&nbsp; 5yr avg {pir_avg:.1f} | {cur_data['pir_band_label']}</div>",
         unsafe_allow_html=True,

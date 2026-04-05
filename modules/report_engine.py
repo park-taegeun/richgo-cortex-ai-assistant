@@ -85,7 +85,7 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
             f"자산 점프 폭은 {delta_val:+d}pt로 유의미하나, "
             f"자금 유동성 확보 후 실거주 목적으로 진입 여건을 활용하십시오. "
             f"<span style='font-size:0.85em;color:#8892A4;'>"
-            f"PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
+            f"PIR {pir_val:.1f}년 (서울 평균 소득 기준)</span>"
         )
         color = _YELLOW_NEO
 
@@ -96,7 +96,7 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
             f"이동에 따른 가치 상승({delta_val:+d}pt) 대비 수급 및 가격 리스크가 선행합니다.<br/>"
             f"잠시 관망하며 더 나은 매수 기회나 유동성 골든타임을 엿보십시오. "
             f"<span style='font-size:0.85em;color:#8892A4;'>"
-            f"PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
+            f"PIR {pir_val:.1f}년 (서울 평균 소득 기준)</span>"
         )
         color = _RED_NEO
 
@@ -107,7 +107,7 @@ def build_ai_report(cur: dict, tgt: dict) -> dict:
             f"보수적 접근이 권장되며, 전세금({ai_jeonse*100:.1f}%) 레버리지와 "
             f"PIR 장기 밴드를 예의 주시하십시오. "
             f"<span style='font-size:0.85em;color:#8892A4;'>"
-            f"현재 PIR {pir_val:.1f}yr (서울 평균 소득 기준)</span>"
+            f"현재 PIR {pir_val:.1f}년 (서울 평균 소득 기준)</span>"
         )
         color = _NEUTRAL
 
