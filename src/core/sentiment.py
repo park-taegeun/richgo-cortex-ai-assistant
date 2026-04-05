@@ -97,14 +97,16 @@ class SentimentAnalyzer:
         price_component = max(-5.0, min(5.0, momentum_pct * 0.5))
 
         # ── Pop_Flow_Ratio 기여 ──────────────────────────────────────────────
-        # 스케일 자동 감지: |population_net| > 10,000 이면 절대 인구수로 판단
-        if abs(population_net) > 10_000:
-            POP_SCALE = 500_000.0  # 서울 자치구 총인구 기준 (~50만명)
-        elif abs(population_net) > 500:
-            POP_SCALE = 5_000.0   # 월 순이동 ±5,000명 기준
-        else:
-            POP_SCALE = 200.0     # 월 순이동 ±200명 기준 (소규모)
-
+        # 데이터 기반 교정 (DB 실측 감사 2026-04-05):
+        #   REGION_POPULATION_MOVEMENT 순이동 컬럼 통계
+        #   MIN=-4,331 / MAX=+10,153 / AVG=-9.6 / STD=616.6
+        #
+        #   POP_SCALE = 1,000 (STD 기준 1.62σ)
+        #     ±1,000명 → pop_ratio ±1.0 (최대 반응)
+        #     ±600명   → pop_ratio ±0.6 (1σ, 중간 반응)
+        #     ±200명   → pop_ratio ±0.2 (소폭 반응)
+        #   STD의 극단값 ±4,331은 클리핑 처리
+        POP_SCALE     = 1_000.0
         pop_ratio     = max(-1.0, min(1.0, population_net / POP_SCALE))
         pop_component = pop_ratio * 1.5  # [-1.5, +1.5] 기여
 
@@ -117,7 +119,7 @@ class SentimentAnalyzer:
         print(
             f"📊 [PROXY FORMULA] "
             f"momentum={momentum_pct:+.2f}% → price={price_component:+.2f}pt (×0.7={price_component*0.7:+.2f}) | "
-            f"pop_net={population_net:+.0f} (scale={POP_SCALE:.0f}) "
+            f"pop_net={population_net:+.0f}/1000 "
             f"→ pop_ratio={pop_ratio:+.3f} → pop={pop_component:+.2f}pt (×0.3={pop_component*0.3:+.2f}) | "
             f"final={proxy_score:+.4f}pt"
         )
