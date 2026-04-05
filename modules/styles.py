@@ -13,6 +13,7 @@ Responsibilities:
 from typing import List
 
 from datetime import datetime, timedelta
+from modules.report_engine import supply_grade
 
 import numpy as np
 import plotly.graph_objects as go
@@ -437,8 +438,17 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
     """
     현재 vs 목표 단지 5축 레이더 차트.
     fill="toself" + fillcolor 반투명으로 Radar 면적 강조.
+    마우스오버 시 실제 수치 툴팁 노출.
     """
     categories = ["공급점수", "PIR점수", "전세가율", "뉴스심리", "종합"]
+    # 툴팁에 표시할 실제 수치 (정규화 전)
+    _LABELS = [
+        ("공급 안전도", "pt",  lambda d: d["supply_score_final"]),
+        ("PIR 저평가 지수", "pt", lambda d: (1 - min(1.0, d["pir_relative_index"])) * 100),
+        ("전세가율",      "%",  lambda d: d["jeonse_ratio"] * 100),
+        ("뉴스 심리",     "pt", lambda d: d["sentiment_score"]),
+        ("종합 점수",     "pt", lambda d: d["s_alpha"]),
+    ]
 
     def _radar_vals(d: dict) -> List[float]:
         return [
@@ -449,23 +459,36 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
             d["s_alpha"],
         ]
 
+    def _customdata(d: dict) -> List[list]:
+        return [[fn(d), unit, name] for name, unit, fn in _LABELS]
+
     cur_vals = _radar_vals(cur)
     tgt_vals = _radar_vals(tgt)
+
+    _hover_tmpl = (
+        "<b>%{theta}</b><br>"
+        "%{customdata[2]}: <b>%{customdata[0]:.1f}%{customdata[1]}</b>"
+        "<extra></extra>"
+    )
 
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=cur_vals + [cur_vals[0]],
         theta=categories + [categories[0]],
-        fill="toself", fillcolor="rgba(68,136,255,0.30)",
-        line=dict(color="#4488FF", width=2),
+        fill="toself", fillcolor="rgba(68,136,255,0.18)",
+        line=dict(color="#4488FF", width=1.8),
         name=cur["danji_name"],
+        customdata=_customdata(cur) + [_customdata(cur)[0]],
+        hovertemplate=_hover_tmpl,
     ))
     fig.add_trace(go.Scatterpolar(
         r=tgt_vals + [tgt_vals[0]],
         theta=categories + [categories[0]],
-        fill="toself", fillcolor="rgba(0,255,170,0.30)",
+        fill="toself", fillcolor="rgba(0,255,170,0.22)",
         line=dict(color=MINT, width=2.5),
         name=tgt["danji_name"],
+        customdata=_customdata(tgt) + [_customdata(tgt)[0]],
+        hovertemplate=_hover_tmpl,
     ))
     fig.update_layout(
         paper_bgcolor=CARD_BG,
@@ -483,7 +506,12 @@ def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
         ),
         legend=dict(font=dict(color="#8892A4", size=11), bgcolor="rgba(0,0,0,0)"),
         margin=dict(l=40, r=40, t=40, b=40),
-        height=300,
+        height=320,
+        hoverlabel=dict(
+            bgcolor="#0D1117",
+            bordercolor=MINT,
+            font=dict(color="#E8EAF0", size=12, family="monospace"),
+        ),
     )
     return fig
 
@@ -672,37 +700,84 @@ def render_spatial_risk(cur_data: dict) -> None:
         f"<div class='section-header'>"
         f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
         f"border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700;margin-right:8px;'>목표 단지</span>"
-        f"🎯 공급 위험 신호 (Spatial Risk)</div>",
+        f"🏗️ 향후 공급 안전도</div>",
         unsafe_allow_html=True,
     )
     spill     = cur_data["spillover_detail"]
     own_score = spill["own_score"]
+    own_grade = supply_grade(own_score)
+
+    # ── 본 구 점수 + 한글 등급 + 프로그레스 바 게이지 ──────────────────────────
     st.markdown(
-        f"<div style='margin-bottom:12px;'>"
-        f"<div class='metric-label'>본 구 ({spill['own_sgg']})</div>"
-        f"<div style='font-size:28px;font-weight:700;'>"
-        f"{signal_icon(own_score)} <span style='color:#E8EAF0;'>{own_score:.1f}pt</span></div>"
+        f"<div style='margin-bottom:14px;'>"
+        f"<div class='metric-label'>본 구 ({spill['own_sgg']}) 공급 안전도</div>"
+        f"<div style='display:flex;align-items:baseline;gap:10px;margin:4px 0 6px;'>"
+        f"  <span style='font-size:28px;font-weight:700;color:{own_grade['color']};'>{own_score:.1f}pt</span>"
+        f"  <span style='font-size:13px;color:{own_grade['color']};font-weight:600;'>"
+        f"  ({own_grade['label']})</span>"
+        f"</div>"
+        f"<div title='{own_score:.0f}/100' style='background:#1E2329;border-radius:6px;height:12px;"
+        f"overflow:hidden;position:relative;'>"
+        f"  <div style='width:{own_score:.0f}%;height:100%;background:{own_grade['bar_color']};"
+        f"  border-radius:6px;transition:width 0.8s ease;'></div>"
+        f"</div>"
+        f"<div style='display:flex;justify-content:space-between;font-size:10px;color:#445566;margin-top:3px;'>"
+        f"  <span>🔴 입주 폭탄 (0)</span><span>🟡 적정 (30)</span><span>🟢 안전 (70+)</span>"
+        f"</div>"
+        f"<div style='font-size:11px;color:#667788;margin-top:6px;'>{own_grade['detail']}</div>"
         f"</div>",
         unsafe_allow_html=True,
     )
-    if spill.get("adjacent_sggs"):
-        st.markdown("<div class='metric-label'>인접 구 Spillover (30%)</div>", unsafe_allow_html=True)
+
+    adj_scores_dict = spill.get("adjacent_scores", {})
+    if adj_scores_dict:
+        # ── 인접 구 신호등 ────────────────────────────────────────────────────
+        st.markdown(
+            f"<div class='metric-label' style='margin-bottom:6px;'>인접 구 Spillover 영향 (반영 30%)</div>",
+            unsafe_allow_html=True,
+        )
         sig_html = "<div class='signal-row'>"
-        for adj_sgg, adj_score in spill.get("adjacent_scores", {}).items():
+        for adj_sgg, adj_score in adj_scores_dict.items():
+            adj_g       = supply_grade(adj_score)
+            adj_g_label = adj_g["label"]
+            adj_g_color = adj_g["color"]
             sig_html += (
-                f"<div class='signal' title='{adj_sgg}'>"
+                f"<div class='signal' title='{adj_sgg}: {adj_g_label}'>"
                 f"<span>{signal_icon(adj_score)}</span>{adj_sgg}<br>"
-                f"<b style='color:#E8EAF0;'>{adj_score:.0f}pt</b>"
+                f"<b style='color:{adj_g_color};'>{adj_score:.0f}pt</b>"
                 f"</div>"
             )
         sig_html += "</div>"
         st.markdown(sig_html, unsafe_allow_html=True)
-        final = spill.get("final_score", own_score)
+
+        # ── Spillover 한 문장 요약 ────────────────────────────────────────────
+        adj_scores_list = list(adj_scores_dict.values())
+        adj_names       = list(adj_scores_dict.keys())
+        avg_adj         = sum(adj_scores_list) / len(adj_scores_list)
+        name_str        = "·".join(adj_names[:2])
+        if avg_adj >= 70:
+            spill_msg  = f"인접 지역({name_str}) 공급도 희소하여 향후 3년간 전세가 방어력이 우수합니다."
+            spill_clr  = "#00FF88"
+        elif avg_adj >= 30:
+            spill_msg  = f"인접 지역({name_str}) 공급 수준은 혼재되어, 개별 구 동향을 함께 주시하십시오."
+            spill_clr  = YELLOW_NEO
+        else:
+            spill_msg  = f"인접 지역({name_str})의 공급 물량이 많아 가격 하락 압력에 유의하십시오."
+            spill_clr  = RED_NEO
+
+        # ── 최종 점수 + Spillover 요약 ────────────────────────────────────────
+        final         = spill.get("final_score", own_score)
+        final_grade   = supply_grade(final)
+        fg_color      = final_grade["color"]
+        fg_label      = final_grade["label"]
         st.markdown(
-            f"<div style='margin-top:14px;padding:10px 14px;"
-            f"background:#0A1020;border-radius:8px;border-left:3px solid {MINT};'>"
-            f"<span style='font-size:11px;color:#445566;'>최종 공급 점수 (Own 70% + Adj 30%)</span><br>"
-            f"<span style='font-size:20px;font-weight:700;color:{MINT};'>{final:.1f}pt</span>"
+            f"<div style='margin-top:12px;padding:10px 14px;"
+            f"background:#0A1020;border-radius:8px;border-left:3px solid {fg_color};'>"
+            f"<span style='font-size:11px;color:#445566;'>최종 공급 안전도 (Own 70% + Adj 30%)</span><br>"
+            f"<span style='font-size:20px;font-weight:700;color:{fg_color};'>"
+            f"{final:.1f}pt — {fg_label}</span><br>"
+            f"<span style='font-size:11px;color:{spill_clr};margin-top:4px;display:block;'>"
+            f"💬 {spill_msg}</span>"
             f"</div>",
             unsafe_allow_html=True,
         )

@@ -22,6 +22,42 @@ _RED_NEO    = "#FF4B4B"
 _NEUTRAL    = "#E8EAF0"
 
 
+# ── Supply Grade Helper ───────────────────────────────────────────────────────
+
+def supply_grade(score: float) -> dict:
+    """
+    공급 점수(0~100)를 직관적 한글 등급 + 색상 + 해설로 변환.
+
+    Returns:
+        {
+            "label":   str  — 한글 등급 (공급 부족 — 안전 / 공급 적정 / 입주 폭탄 주의)
+            "color":   str  — hex 색상
+            "bar_color": str — rgba 바 색상
+            "detail":  str  — 한 문장 해설
+        }
+    """
+    if score >= 70:
+        return {
+            "label":     "공급 부족 — 안전",
+            "color":     "#00FF88",
+            "bar_color": "rgba(0,255,136,0.85)",
+            "detail":    "새 아파트 입주 물량이 적어 기존 주택의 희소성이 높습니다.",
+        }
+    if score >= 30:
+        return {
+            "label":     "공급 적정",
+            "color":     "#FFD21E",
+            "bar_color": "rgba(255,210,30,0.85)",
+            "detail":    "입주 물량이 적정 수준으로, 가격에 미치는 영향은 제한적입니다.",
+        }
+    return {
+        "label":     "입주 폭탄 주의",
+        "color":     "#FF4B4B",
+        "bar_color": "rgba(255,75,75,0.85)",
+        "detail":    "향후 대규모 입주 예정으로 가격 하락 압력에 유의하십시오.",
+    }
+
+
 # ── Report Builder ─────────────────────────────────────────────────────────────
 
 def build_ai_report(cur: dict, tgt: dict) -> dict:

@@ -279,37 +279,50 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         st.plotly_chart(
             build_comparison_chart(cur_data, tgt_data),
             use_container_width=True,
-            config={"displayModeBar": False},
+            config={
+                "displayModeBar": True,
+                "modeBarButtonsToRemove": ["select2d", "lasso2d", "toggleSpikelines"],
+                "displaylogo": False,
+            },
         )
         st.markdown("</div>", unsafe_allow_html=True)
 
     with col_delta_ui:
+        move_dir   = "상향 이동 ▲" if d["delta"] >= 0 else "하향 이동 ▼"
+        move_color = d["delta_color"]
         st.markdown(
-            f"<div class='card' style='height:300px;display:flex;flex-direction:column;justify-content:center;'>"
-            f"<div class='section-header'>점수 Delta</div>"
-            f"<div style='font-size:60px;font-weight:900;color:{d['delta_color']};{d['delta_glow']}'>{d['delta']:+d}pt</div>"
-            f"<div style='font-size:20px;font-weight:700;color:{d['delta_color']};margin-top:4px;'>({d['delta_pct']:+.1f}%)</div>"
-            f"<hr style='border-color:{BORDER};margin:16px 0;'>"
-            f"<div style='font-size:13px;color:#445566;line-height:1.8;'>"
-            f"현재: <b style='color:#E8EAF0;'>{cur_data['s_alpha']}pt</b><br>"
-            f"목표: <b style='color:#E8EAF0;'>{tgt_data['s_alpha']}pt</b><br>"
-            f"Alpha-Trigger: {d['trigger_text']}</div></div>",
+            f"<div class='card' style='display:flex;flex-direction:column;justify-content:center;"
+            f"min-height:340px;'>"
+            f"<div class='section-header'>갈아타기 가치 (이동 시 이득)</div>"
+            f"<div style='font-size:56px;font-weight:900;color:{move_color};{d['delta_glow']}'>"
+            f"{d['delta']:+d}pt</div>"
+            f"<div style='display:flex;align-items:center;gap:10px;margin-top:4px;'>"
+            f"  <span style='font-size:18px;font-weight:700;color:{move_color};'>({d['delta_pct']:+.1f}%)</span>"
+            f"  <span style='background:{move_color}22;color:{move_color};border:1px solid {move_color}55;"
+            f"  border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;'>{move_dir}</span>"
+            f"</div>"
+            f"<hr style='border-color:{BORDER};margin:14px 0;'>"
+            f"<div style='font-size:13px;color:#445566;line-height:1.9;'>"
+            f"현재 단지: <b style='color:#667788;'>{cur_data['s_alpha']}pt</b><br>"
+            f"목표 단지: <b style='color:#E8EAF0;'>{tgt_data['s_alpha']}pt</b><br>"
+            f"<span style='font-size:11px;color:#334455;'>초격차 갈아타기 성립 조건:</span><br>"
+            f"{d['trigger_text']}</div></div>",
             unsafe_allow_html=True,
         )
 
-    # Alpha-Trigger Banner
+    # 초격차 갈아타기 성립 배너
     if d["is_trigger"]:
         st.markdown(
             f"<div class='alpha-banner'>"
-            f"<div class='alpha-title'>[STRATEGY CONFIRMED]</div>"
+            f"<div class='alpha-title'>✅ 초격차 갈아타기 성립 조건 달성</div>"
             f"<div style='font-size:26px;font-weight:800;color:{GOLD};text-shadow:0 0 20px {GOLD};'>"
             f"자산 가치 점프 구간! 상급지 이동을 권고합니다.</div>"
             f"<div style='margin-top:20px;'>"
-            f"<span style='font-size:14px;color:#886600;'>점수 상승 폭</span><br>"
+            f"<span style='font-size:14px;color:#886600;'>갈아타기 가치 (이동 시 이득)</span><br>"
             f"<span class='alpha-delta'>{d['delta']:+d}pt &nbsp; ({d['delta_pct']:+.1f}%)</span></div>"
             f"<div style='margin-top:16px;font-size:13px;color:#664400;line-height:1.8;'>"
-            f"조건 1: 목표 점수 {tgt_data['s_alpha']}pt ≥ {ALPHA_TRIGGER_MIN}pt<br>"
-            f"조건 2: Delta {d['delta']:+d}pt ≥ {ALPHA_TRIGGER_DELTA}pt<br>"
+            f"조건 1: 목표 점수 {tgt_data['s_alpha']}pt ≥ {ALPHA_TRIGGER_MIN}pt ✅<br>"
+            f"조건 2: 이동 시 이득 {d['delta']:+d}pt ≥ {ALPHA_TRIGGER_DELTA}pt ✅<br>"
             f"{cur_data['danji_name']} → {tgt_data['danji_name']} 이동 시 예상 자산 가치 상승 레버리지 확보"
             f"</div></div>",
             unsafe_allow_html=True,
@@ -318,7 +331,7 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         st.markdown(
             f"<div class='card' style='text-align:center;padding:20px;border-color:{BORDER};'>"
             f"<span style='color:#445566;font-size:13px;'>"
-            f"Alpha-Trigger 미달성 &nbsp;|&nbsp; 조건: 목표 ≥ {ALPHA_TRIGGER_MIN}pt & Δ ≥ {ALPHA_TRIGGER_DELTA}pt"
+            f"초격차 갈아타기 성립 조건 미달 &nbsp;|&nbsp; 조건: 목표 ≥ {ALPHA_TRIGGER_MIN}pt & 이동 이득 ≥ {ALPHA_TRIGGER_DELTA}pt"
             f"</span></div>",
             unsafe_allow_html=True,
         )
