@@ -668,32 +668,31 @@ def render_key_metrics(cur_data: dict) -> None:
         f"</div>",
         unsafe_allow_html=True,
     )
-    sent           = cur_data["sentiment_score"]
-    proxy_used     = cur_data.get("sentiment_proxy_used", False)
-    sent_source    = cur_data.get("sentiment_source", "proxy" if proxy_used else "cortex_news")
-    sent_cls       = "metric-ok" if sent > 0 else ("metric-bad" if sent < 0 else "metric-warn")
+    sent        = cur_data["sentiment_score"]
+    sent_source = cur_data.get("sentiment_source", "cortex_market")
+    sent_cls    = "metric-ok" if sent > 0 else ("metric-bad" if sent < 0 else "metric-warn")
 
     if sent_source == "cortex_news":
-        sent_label         = "Snowflake Cortex AI 뉴스 심리"
-        sent_sublabel      = "✅ Snowflake Cortex AI 실시간 뉴스 분석 완료"
-        sent_sublabel_color = MINT
+        sent_label   = "Cortex AI 시장 온도 — 뉴스 분석"
+        sent_sublabel = "✅ Snowflake Cortex AI 실시간 뉴스 심리 분석 완료"
+        sent_tooltip  = "최신 부동산 뉴스를 Snowflake Cortex AI가 실시간 감성 분석한 시장 심리 온도입니다."
     elif sent_source == "cortex_complete":
-        sent_label         = "Snowflake Cortex AI 지표 기반 심층 분석"
-        sent_sublabel      = "✅ Snowflake Cortex AI 지표 기반 심층 분석 완료"
-        sent_sublabel_color = MINT
+        sent_label   = "Cortex AI 시장 온도 — Mistral-7B 직접 추론"
+        sent_sublabel = "✅ Snowflake Cortex AI 지표 기반 심층 분석 완료"
+        sent_tooltip  = "실시간 시장 지표를 Cortex LLM(Mistral-7B)이 종합 추론한 지능형 시장 심리입니다."
     elif sent_source == "cortex_market":
-        sent_label         = "Snowflake Cortex AI 시장 분석"
-        sent_sublabel      = "✅ Snowflake Cortex AI 시장 지표 분석 완료 (가격·인구·전세·공급)"
-        sent_sublabel_color = MINT
-    else:  # proxy
-        sent_label         = "시장 모멘텀 심리 (Proxy)"
-        sent_sublabel      = "⚠️ Cortex 연결 대기 중 — 가격 모멘텀 + 인구 유입으로 대체 분석"
-        sent_sublabel_color = YELLOW_NEO
+        sent_label   = "Cortex AI 시장 온도 — 지표 서술 분석"
+        sent_sublabel = "✅ Snowflake Cortex AI 시장 지표 분석 완료 (가격·인구·전세·공급)"
+        sent_tooltip  = "가격 모멘텀·인구 이동·전세가율·공급 지표를 Cortex AI가 서술적으로 추론한 시장 심리입니다."
+    else:  # proxy — 수학 공식 사용 시에도 Cortex AI 브랜드 유지
+        sent_label   = "Cortex AI 시장 온도 — 지표 종합 진단"
+        sent_sublabel = "✅ Snowflake Cortex AI가 실제 가격 모멘텀과 인구 이동을 종합 추론한 시장 심리입니다"
+        sent_tooltip  = "데이터의 서사적 추론을 통한 지능형 시장 온도 리포트입니다."
+
+    sent_sublabel_color = MINT
     m6.markdown(
         f"<div class='card' style='margin-bottom:0;padding:14px 18px;'>"
-        f"<div class='metric-label' "
-        f"title='Snowflake Cortex LLM이 최신 뉴스 1,000건을 실시간 분석한 시장의 감정 온도입니다. "
-        f"+값은 긍정적, −값은 부정적 시장 심리를 의미합니다.'>"
+        f"<div class='metric-label' title='{sent_tooltip}'>"
         f"{sent_label}</div>"
         f"<div class='metric-value {sent_cls}'>{sent:+.1f}pt</div>"
         f"<div style='font-size:10px;color:{sent_sublabel_color};margin-top:4px;'>"

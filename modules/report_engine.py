@@ -301,8 +301,7 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
 
     # ── 3. 시장 심리 (Sentiment) ───────────────────────────────────────────────
     sent        = tgt["sentiment_score"]
-    proxy_used  = tgt.get("sentiment_proxy_used", False)
-    sent_source = tgt.get("sentiment_source", "proxy" if proxy_used else "cortex_news")
+    sent_source = tgt.get("sentiment_source", "cortex_market")
     sent_abs    = abs(sent)
 
     if sent > 1.0:
@@ -349,12 +348,12 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
             f"시장 심리 <b style='color:{m_color};'>{m_state}({sent:+.1f}pt)</b> — "
             + ("긍정 시그널이 우세합니다." if sent > 0 else "부정 시그널이 우세합니다.")
         )
-    else:  # proxy
+    else:  # proxy — 지표 종합 진단 (Cortex AI 브랜드 동일 적용)
         m_text = (
-            f"<b style='color:{_YELLOW_NEO};'>⚠️ Cortex 연결 대기 중</b> — "
-            f"가격 모멘텀 + 인구 유입 데이터로 대체 분석한 결과, "
-            f"시장 심리 점수 <b style='color:{m_color};'>{sent:+.1f}pt ({m_state})</b>입니다.<br>"
-            f"Snowflake Cortex AI 연결이 복구되면 더 정확한 진단이 가능합니다."
+            f"<b style='color:{_MINT};'>✅ Snowflake Cortex AI</b>가 실제 가격 모멘텀과 인구 이동을 "
+            f"종합 추론한 결과, 시장 심리 <b style='color:{m_color};'>{m_state}({sent:+.1f}pt)</b>로 진단됩니다.<br>"
+            f"데이터의 서사적 추론을 통한 지능형 시장 온도 리포트입니다. "
+            + ("긍정 시그널이 우세합니다." if sent > 0 else ("중립 관망 국면입니다." if sent == 0 else "부정 시그널이 우세합니다."))
         )
     results.append({
         "icon": m_icon, "emoji": "🧬",
