@@ -489,17 +489,24 @@ def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) 
     total_eok   = round(cash_eok  + loan_eok,   2)
     surplus_eok = round(total_eok - price_eok,  2)
 
+    # ── 수치 기반 판정 (Logic Hardening) ─────────────────────────────────────
+    # surplus_eok < 0 → LTV 수치 무관하게 위험/불가로 고정
     surplus_ratio = surplus_eok / max(price_eok, 1)
-    if surplus_ratio >= 0.10:
-        verdict, verdict_label, verdict_color = "Safe",    "재무적 안전", _MINT
-    elif surplus_ratio >= -0.05:
-        verdict, verdict_label, verdict_color = "Caution", "주의",       _YELLOW_NEO
+    if surplus_eok < 0 and surplus_ratio < -0.15:
+        verdict, verdict_label, verdict_color = "Impossible", "진입 불가",   _RED_NEO
+    elif surplus_eok < 0:
+        verdict, verdict_label, verdict_color = "Risk",       "영끌 위험",   _RED_NEO
+    elif surplus_ratio >= 0.10:
+        verdict, verdict_label, verdict_color = "Safe",       "재무적 안전", _MINT
+    elif surplus_ratio >= 0:
+        verdict, verdict_label, verdict_color = "Caution",    "주의",        _YELLOW_NEO
     else:
-        verdict, verdict_label, verdict_color = "Risk",    "영끌 위험",   _RED_NEO
+        verdict, verdict_label, verdict_color = "Risk",       "영끌 위험",   _RED_NEO
 
     cortex_text = _call_cortex_financial(
         cash_eok=cash_eok, loan_eok=loan_eok, total_eok=total_eok,
-        price_eok=price_eok, ltv_rate=ltv_rate, sgg=sgg, client=client,
+        price_eok=price_eok, surplus_eok=surplus_eok,
+        ltv_rate=ltv_rate, sgg=sgg, verdict=verdict, client=client,
     )
 
     return {
@@ -518,22 +525,45 @@ def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) 
 
 
 def _call_cortex_financial(
-    cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg, client=None
+    cash_eok, loan_eok, total_eok, price_eok, surplus_eok,
+    ltv_rate, sgg, verdict, client=None
 ) -> str:
     if client is None:
-        return _financial_fallback_text(cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg)
+        return _financial_fallback_text(
+            cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg
+        )
 
     ltv_pct = int(ltv_rate * 100)
+
+    # ── 수치 기반 강제 제약 컨텍스트 (Logic Hardening) ───────────────────────
+    if surplus_eok < 0:
+        hard_constraint = (
+            f"[필수 판단 기준 — 절대 무시 불가] "
+            f"총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억보다 "
+            f"{abs(surplus_eok):.1f}억 부족합니다. "
+            f"이 수치상 현실에서는 계약금 및 잔금 처리가 불가능합니다. "
+            f"LTV 비율이 낮더라도 '안전하다'는 표현은 절대 사용 금지입니다. "
+            f"결론은 반드시 '영끌 위험' 또는 '진입 불가'이어야 합니다. "
+        )
+    else:
+        hard_constraint = (
+            f"[핵심 판단 기준] "
+            f"총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억보다 "
+            f"{surplus_eok:.1f}억 여유가 있습니다. "
+            f"결론은 '재무적 안전' 또는 '주의' 중 하나여야 합니다. "
+        )
+
     prompt = (
-        f"당신은 자산 관리 전문가입니다. 고객을 '회원님'이라 칭합니다. "
-        f"회원님 자산 현황: 보유 현금 {cash_eok:.1f}억, "
-        f"{sgg} LTV {ltv_pct}% 적용 대출 한도 {loan_eok:.1f}억, 총 가용 {total_eok:.1f}억. "
-        f"목표 단지 매매가 {price_eok:.1f}억. "
-        f"현재 LTV 규제와 금리 상황을 고려하여 이 갈아타기의 재무 안전성을 분석하되, "
-        f"반드시 다음 형식을 지켜 한국어로만 답해주세요:\n"
-        f"✅ or ⚠️ or 🚨 [재무 판정: '재무적 안전', '주의', '영끌 위험' 중 하나]\n"
-        f"💡 [LTV·대출 한도·여유금 기반 근거 한 문장]\n"
-        f"📌 [원리금 상환 부담 관점의 한 줄 핵심 조언]"
+        f"{hard_constraint}\n"
+        f"당신은 냉철한 자산 심사역입니다. 고객을 '회원님'이라 칭합니다. "
+        f"회원님 자산 현황: 보유 현금 {cash_eok:.1f}억 / "
+        f"{sgg} LTV {ltv_pct}% 대출 한도 {loan_eok:.1f}억 / "
+        f"총 가용 {total_eok:.1f}억 / 매매가 {price_eok:.1f}억 / "
+        f"여유·부족분 {surplus_eok:+.1f}억. "
+        f"위 수치를 바탕으로 반드시 다음 형식을 지켜 한국어로만 답해주세요:\n"
+        f"🚨 or ⚠️ or ✅ [판정: 위 기준에 따른 '{verdict}' 계열 단어로 시작]\n"
+        f"💡 [여유·부족분 수치({surplus_eok:+.1f}억)를 명시한 근거 한 문장]\n"
+        f"📌 [회원님께 드리는 핵심 재무 조언 한 줄]"
     )
     cur = client._cur()
     try:
@@ -555,23 +585,22 @@ def _call_cortex_financial(
 
 
 def _financial_fallback_text(
-    cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg
+    cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg
 ) -> str:
-    surplus = total_eok - price_eok
     ltv_pct = int(ltv_rate * 100)
-    if surplus >= 0:
+    if surplus_eok >= 0:
         return (
-            f"1. {sgg}은(는) LTV {ltv_pct}% 규제 적용 → 대출 한도 {loan_eok:.1f}억.\n"
-            f"2. 보유 현금 {cash_eok:.1f}억 + 대출 {loan_eok:.1f}억 = 총 {total_eok:.1f}억, "
-            f"매매가 {price_eok:.1f}억 대비 {surplus:.1f}억 여유.\n"
-            f"3. 적정 부채비율 유지 시 원리금 상환 부담 감내 가능 — 재무적 안전 구간으로 판단됩니다."
+            f"✅ 재무적 안전\n"
+            f"💡 {sgg} LTV {ltv_pct}% 적용 대출 {loan_eok:.1f}억 포함 총 가용 {total_eok:.1f}억으로 "
+            f"매매가 {price_eok:.1f}억 대비 {surplus_eok:.1f}억 여유가 확인됩니다.\n"
+            f"📌 적정 부채비율 유지 시 원리금 상환 부담 감내 가능 — 갈아타기 진행이 현실적입니다."
         )
     else:
         return (
-            f"1. {sgg}은(는) LTV {ltv_pct}% 규제 적용 → 대출 한도 {loan_eok:.1f}억.\n"
-            f"2. 총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억 대비 "
-            f"{abs(surplus):.1f}억 부족.\n"
-            f"3. 고금리 환경에서 추가 차입 시 원리금 상환 부담 과중 — 영끌 위험 구간에 해당합니다."
+            f"🚨 영끌 위험\n"
+            f"💡 총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억보다 "
+            f"{abs(surplus_eok):.1f}억 부족하여 현실적으로 잔금 처리가 불가능합니다.\n"
+            f"📌 현금 확보 또는 목표 단지 하향 조정 후 재검토를 권고합니다."
         )
 
 

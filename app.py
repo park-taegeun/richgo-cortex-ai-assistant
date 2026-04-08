@@ -4,6 +4,7 @@
 from typing import Optional, Tuple
 from dotenv import load_dotenv
 import streamlit as st
+import time
 
 from modules.data_loader   import get_engine, get_all_danji_list, render_cascading_selector
 from modules.report_engine import (
@@ -494,9 +495,29 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         )
 
     if run_financial:
-        with st.spinner("Cortex AI가 재무 실행 가능성을 판독 중입니다..."):
-            fin = compute_financial_feasibility(cash_eok, tgt_data, sf_client)
-            st.session_state["financial_result"] = fin
+        # ── 단계별 게임형 로딩 시스템 ─────────────────────────────────────────
+        prog   = st.progress(0)
+        status = st.empty()
+
+        status.info("📡 **[1/4]** Snowflake 실거래 DB에서 해당 단지의 최신 시세 인출 중...")
+        prog.progress(25, text="25% — 시세 데이터 인출")
+        time.sleep(0.35)
+
+        status.info("💸 **[2/4]** 지역별 주택담보대출 규제(LTV) 및 갭 투자 산식 적용 중...")
+        prog.progress(50, text="50% — LTV 규제 적용")
+        time.sleep(0.3)
+
+        status.info("🧠 **[3/4]** Cortex AI가 회원님의 자산 데이터를 기반으로 재무 판독 중...")
+        prog.progress(75, text="75% — Cortex AI 추론 중")
+
+        fin = compute_financial_feasibility(cash_eok, tgt_data, sf_client)
+        st.session_state["financial_result"] = fin
+
+        prog.progress(100, text="100% — 완료")
+        status.success("🏆 **[4/4]** 맞춤형 재무 전략 리포트가 완성되었습니다!")
+        time.sleep(0.6)
+        prog.empty()
+        status.empty()
 
     fin = st.session_state.get("financial_result")
     if fin:
