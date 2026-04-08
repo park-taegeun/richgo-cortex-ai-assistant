@@ -612,9 +612,61 @@ cur_data, tgt_data = render_sidebar()
 if cur_data and tgt_data:
     render_dashboard(cur_data, tgt_data)
 else:
-    st.info(
-        "**[지능형 부동산 비서 온보딩 가이드]**\n\n"
-        "1. 좌측 메뉴에서 현재 거주 중인 단지를 선택하세요.\n"
-        "2. 이동을 희망하는 목표 단지를 선택하세요.\n"
-        "3. 분석 실행 후 하단의 AI 마스터 전략 리포트를 확인하세요."
+    st.markdown(
+        """
+<div style='background:linear-gradient(135deg,#0D1B2A 0%,#112233 100%);
+            border:1px solid #1E3A5F;border-radius:12px;padding:28px 32px;
+            max-width:640px;margin:40px auto;'>
+  <div style='font-size:18px;font-weight:700;color:#E0F0FF;letter-spacing:0.5px;margin-bottom:20px;'>
+    🧭 Cortex AI 지능형 부동산 비서 — 시작 가이드
+  </div>
+  <div style='display:flex;flex-direction:column;gap:14px;'>
+    <div style='display:flex;align-items:flex-start;gap:14px;'>
+      <div style='font-size:22px;line-height:1;'>🏠</div>
+      <div>
+        <div style='color:#7EC8E3;font-size:13px;font-weight:600;margin-bottom:2px;'>1단계 — 자금 계획의 시작</div>
+        <div style='color:#B0C8D8;font-size:13px;line-height:1.6;'>
+          좌측 메뉴에서 <strong style='color:#E0F0FF;'>현재 거주 단지</strong>와
+          <strong style='color:#E0F0FF;'>보유 현금(억 단위)</strong>을 입력하세요.
+        </div>
+      </div>
+    </div>
+    <div style='display:flex;align-items:flex-start;gap:14px;'>
+      <div style='font-size:22px;line-height:1;'>🎯</div>
+      <div>
+        <div style='color:#7EC8E3;font-size:13px;font-weight:600;margin-bottom:2px;'>2단계 — 목표 설정</div>
+        <div style='color:#B0C8D8;font-size:13px;line-height:1.6;'>
+          상급지 이동을 희망하는 <strong style='color:#E0F0FF;'>목표 단지</strong>를 선택하세요.
+        </div>
+      </div>
+    </div>
+    <div style='display:flex;align-items:flex-start;gap:14px;'>
+      <div style='font-size:22px;line-height:1;'>✨</div>
+      <div>
+        <div style='color:#7EC8E3;font-size:13px;font-weight:600;margin-bottom:2px;'>3단계 — 라이프스타일 맞춤화</div>
+        <div style='color:#B0C8D8;font-size:13px;line-height:1.6;'>
+          본인의 주거 가치 우선순위
+          (<strong style='color:#E0F0FF;'>학군·역세권·슬세권·쾌적성</strong>)를 체크하세요.
+        </div>
+      </div>
+    </div>
+    <div style='display:flex;align-items:flex-start;gap:14px;'>
+      <div style='font-size:22px;line-height:1;'>📊</div>
+      <div>
+        <div style='color:#7EC8E3;font-size:13px;font-weight:600;margin-bottom:2px;'>4단계 — AI 리포트 확인</div>
+        <div style='color:#B0C8D8;font-size:13px;line-height:1.6;'>
+          Cortex AI가 분석한 <strong style='color:#E0F0FF;'>재무 안정도</strong>와
+          <strong style='color:#E0F0FF;'>맞춤 가치 리포트</strong>를 확인하세요.
+        </div>
+      </div>
+    </div>
+  </div>
+  <div style='margin-top:20px;padding-top:16px;border-top:1px solid #1E3A5F;
+              font-size:11px;color:#4A6A8A;text-align:center;line-height:1.6;'>
+    모든 분석은 Snowflake Cortex AI의 실시간 추론을 통해 생성됩니다.<br>
+    Model C+ · Plan Freeze 2026-04-01 · Alpha-Trigger ≥ 80pt
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
     )
