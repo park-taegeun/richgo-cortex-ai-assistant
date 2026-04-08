@@ -583,102 +583,151 @@ _PREFERENCE_HINTS = {
 
 
 def compute_personalized_score(
-    selected_values: list, tgt_data: dict, client=None
+    weights: dict, tgt_data: dict, client=None
 ) -> dict:
     """
-    라이프스타일 선호도 기반 Cortex AI 맞춤형 주거 점수 산출.
+    별점 가중치 기반 Cortex AI 맞춤형 주거 점수 산출 (AHP-Lite 가중합 모델).
 
     Args:
-        selected_values: ['학군','역세권','슬세권','쾌적성'] 중 선택 항목
-        tgt_data:        목표 단지 analyze() 결과 dict
-        client:          SnowflakeClient (None 시 Fallback)
+        weights:  {'학군': int, '역세권': int, '슬세권': int, '쾌적성': int}
+                  각 값은 1~5 별점. 합산하여 1.0으로 정규화(Weighted Sum).
+        tgt_data: 목표 단지 analyze() 결과 dict
+        client:   SnowflakeClient (None 시 Fallback)
 
     Returns:
-        personal_score (int 0–100), explanation (str), selected_values (list)
+        personal_score (int 0–100), explanation (str), matching_comment (str),
+        weights (dict), normalized_weights (dict)
     """
-    if not selected_values:
-        base = int(tgt_data.get("living_score") or 50)
-        return {
-            "personal_score":  base,
-            "explanation":     "선호도 항목을 선택하면 맞춤 점수가 산출됩니다.",
-            "selected_values": [],
-        }
-
     living_score = tgt_data.get("living_score") or 50
     danji_name   = tgt_data.get("danji_name", "")
     sgg          = tgt_data.get("sgg", "")
     jeonse_ratio = tgt_data.get("jeonse_ratio", 0.0)
     supply_score = tgt_data.get("supply_score_final", 50.0)
 
-    hints        = " / ".join(_PREFERENCE_HINTS.get(v, v) for v in selected_values)
-    selected_str = "·".join(selected_values)
+    # ── 가중치 정규화 (AHP-Lite) ────────────────────────────────────────────────
+    total_w = sum(weights.values()) or 1
+    normalized = {k: round(v / total_w, 4) for k, v in weights.items()}
+
+    # 도메인 기반 점수 추정 (데이터 가중합)
+    # living_score 는 종합 생활 점수, 각 항목별 편차를 정규화 비중으로 보정
+    _DOMAIN_BIAS = {"학군": 0.0, "역세권": 5.0, "슬세권": -3.0, "쾌적성": 2.0}
+    base_weighted = sum(
+        normalized[k] * (living_score + _DOMAIN_BIAS.get(k, 0.0))
+        for k in normalized
+    )
+    base_weighted = max(0.0, min(100.0, base_weighted))
+
+    # 가중치 문자열 구성
+    weights_str = " / ".join(f"{k}({v}점·{normalized[k]*100:.0f}%)" for k, v in weights.items())
+    hints_str   = " / ".join(
+        f"{k}: {_PREFERENCE_HINTS.get(k, k)}"
+        for k, v in sorted(weights.items(), key=lambda x: -x[1])
+    )
 
     result = _call_cortex_personalized(
-        selected_str=selected_str, hints=hints,
+        weights_str=weights_str, hints_str=hints_str,
         danji_name=danji_name, sgg=sgg,
-        living_score=living_score, jeonse_ratio=jeonse_ratio,
-        supply_score=supply_score, client=client,
+        living_score=living_score, base_weighted=base_weighted,
+        jeonse_ratio=jeonse_ratio, supply_score=supply_score,
+        normalized=normalized, client=client,
     )
 
     return {
-        "personal_score":  result["score"],
-        "explanation":     result["explanation"],
-        "selected_values": selected_values,
+        "personal_score":    result["score"],
+        "explanation":       result["explanation"],
+        "matching_comment":  result["matching_comment"],
+        "weights":           weights,
+        "normalized_weights": normalized,
     }
 
 
 def _call_cortex_personalized(
-    selected_str, hints, danji_name, sgg,
-    living_score, jeonse_ratio, supply_score, client=None
+    weights_str, hints_str, danji_name, sgg,
+    living_score, base_weighted, jeonse_ratio, supply_score,
+    normalized, client=None
 ) -> dict:
     if client is None:
-        return _personalized_fallback(selected_str, living_score)
+        return _personalized_fallback(weights_str, base_weighted)
 
-    prompt = (
-        f"사용자는 {selected_str}를 최우선 주거 가치로 여깁니다. "
+    # ── 가중합 점수 산출 프롬프트 ────────────────────────────────────────────────
+    score_prompt = (
+        f"사용자의 가치 우선순위(가중치)는 다음과 같습니다: {weights_str}. "
         f"{danji_name}({sgg})의 인프라 데이터: "
         f"리치고 생활 편의 점수 {living_score:.0f}점(100점 만점), "
-        f"핵심 분석 지표 — {hints}. "
+        f"핵심 지표 — {hints_str}. "
         f"전세가율 {jeonse_ratio*100:.0f}%(하방 방어력), 공급 안전도 {supply_score:.0f}점. "
-        f"이 사용자만을 위한 '개인 맞춤 주거 점수'를 100점 만점으로 산출하고 "
-        f"근거를 2줄로 설명해줘. "
+        f"사용자 가중치를 반영한 가중합(Weighted Sum) 기준 '개인 맞춤 주거 점수'를 "
+        f"100점 만점으로 산출하고 근거를 2줄로 설명해줘. "
         f"반드시 첫 번째 줄에 '점수: XX점' 형식으로 시작하고, 한국어로만 답해줘."
     )
+
+    # ── 취향 정합성(Matching) 분석 프롬프트 ─────────────────────────────────────
+    # 가장 중요한 항목(상위 2개) 추출
+    top_items = sorted(normalized.items(), key=lambda x: -x[1])[:2]
+    top_str   = " 및 ".join(f"{k}({v*100:.0f}%)" for k, v in top_items)
+    matching_prompt = (
+        f"사용자의 가치 우선순위는 {weights_str}입니다. "
+        f"{danji_name}({sgg})의 실제 인프라 데이터와 사용자의 가중치를 비교하여, "
+        f"이 단지가 사용자의 취향에 얼마나 '정합(Matching)'하는지 분석해줘. "
+        f"특히 사용자가 가장 중시하는 {top_str} 항목에 대해 단지 데이터가 충분한지 평가하고, "
+        f"만약 부족하다면 반드시 '⚠️ 경고:' 형식으로 전략적 경고를 포함해줘. "
+        f"리치고 생활 점수 {living_score:.0f}점, 공급 안전도 {supply_score:.0f}점 참고. "
+        f"3줄 이내로 한국어로만 답해줘."
+    )
+
     cur = client._cur()
+    score, explanation, matching_comment = int(base_weighted), "", ""
     try:
+        # 점수 산출
         cur.execute(
             "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
-            (prompt,)
+            (score_prompt,)
         )
         row = cur.fetchone()
         if row and row[0]:
             text = str(row[0]).strip()
-            match = re.search(r"점수[:\s]*(\d{1,3})", text)
-            if match:
-                score = max(0, min(100, int(match.group(1))))
+            m = re.search(r"점수[:\s]*(\d{1,3})", text)
+            if m:
+                score = max(0, min(100, int(m.group(1))))
             else:
                 nums = re.findall(r"\b(\d{2,3})\b", text)
-                score = max(0, min(100, int(nums[0]))) if nums else int(living_score)
+                score = max(0, min(100, int(nums[0]))) if nums else int(base_weighted)
+            explanation = text
             print(
-                f"🎯 [CORTEX PERSONALIZED] {danji_name}({sgg}) | "
-                f"선호={selected_str} | score={score}pt"
+                f"⭐ [CORTEX WEIGHTED] {danji_name}({sgg}) | "
+                f"weights={weights_str} | score={score}pt"
             )
-            return {"score": score, "explanation": text}
+
+        # 취향 정합성 분석
+        cur.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
+            (matching_prompt,)
+        )
+        row2 = cur.fetchone()
+        if row2 and row2[0]:
+            matching_comment = str(row2[0]).strip()
+            print(f"🔍 [CORTEX MATCHING] {danji_name} | matching_comment 생성 완료")
+
     except Exception as e:
         print(f"⚠️ [CORTEX PERSONALIZED] 호출 실패 — {e}")
+        return _personalized_fallback(weights_str, base_weighted)
     finally:
         cur.close()
 
-    return _personalized_fallback(selected_str, living_score)
+    if not explanation:
+        return _personalized_fallback(weights_str, base_weighted)
+
+    return {"score": score, "explanation": explanation, "matching_comment": matching_comment}
 
 
-def _personalized_fallback(selected_str: str, living_score: float) -> dict:
-    score = min(100, int(living_score * 1.05))
+def _personalized_fallback(weights_str: str, base_weighted: float) -> dict:
+    score = min(100, int(base_weighted))
     return {
         "score": score,
         "explanation": (
             f"점수: {score}점\n"
-            f"{selected_str} 선호 기준으로 리치고 생활 점수({living_score:.0f}점)를 "
-            f"보정한 맞춤 점수입니다."
+            f"{weights_str} 가중치 기준으로 리치고 생활 점수를 "
+            f"가중합(Weighted Sum)으로 보정한 맞춤 점수입니다."
         ),
+        "matching_comment": "",
     }

@@ -137,25 +137,56 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
             unsafe_allow_html=True,
         )
 
-        # ── MISSION 2: 라이프스타일 선호도 ───────────────────────────────────
+        # ── MISSION 2: 라이프스타일 별점 가중치 ──────────────────────────────
         st.markdown(
             f"<div class='section-header' style='margin-top:8px;' "
-            f"title='나만의 주거 가치 우선순위를 선택하세요.'>"
-            f"🎯 나만의 주거 가치 선호도</div>",
+            f"title='각 항목이 갈아타기 결정에 얼마나 중요한가요? (1=낮음 ~ 5=필수)'>"
+            f"⭐ 나만의 주거 가치 우선순위</div>",
             unsafe_allow_html=True,
         )
-        prev_prefs = st.session_state.get("lifestyle_prefs", [])
-        pref_hak    = st.checkbox("📚 학군",   value="학군"   in prev_prefs)
-        pref_rail   = st.checkbox("🚇 역세권", value="역세권" in prev_prefs)
-        pref_shop   = st.checkbox("🛒 슬세권", value="슬세권" in prev_prefs)
-        pref_green  = st.checkbox("🌿 쾌적성", value="쾌적성" in prev_prefs)
-        selected_prefs = (
-            (["학군"]   if pref_hak  else []) +
-            (["역세권"] if pref_rail else []) +
-            (["슬세권"] if pref_shop else []) +
-            (["쾌적성"] if pref_green else [])
+        st.markdown(
+            "<div style='font-size:11px;color:#445566;margin:-6px 0 8px 0;'>"
+            "이 요소가 갈아타기 결정에 얼마나 중요한가요?</div>",
+            unsafe_allow_html=True,
         )
-        st.session_state["lifestyle_prefs"] = selected_prefs
+        _STAR_OPTIONS = [1, 2, 3, 4, 5]
+        _STAR_LABELS  = {1: "1 낮음", 2: "2", 3: "3 보통", 4: "4", 5: "5 필수"}
+        prev_weights  = st.session_state.get("lifestyle_weights", {})
+
+        w_hak   = st.select_slider(
+            "📚 학군",   options=_STAR_OPTIONS,
+            format_func=lambda x: _STAR_LABELS[x],
+            value=prev_weights.get("학군",   3),
+        )
+        w_rail  = st.select_slider(
+            "🚇 역세권", options=_STAR_OPTIONS,
+            format_func=lambda x: _STAR_LABELS[x],
+            value=prev_weights.get("역세권", 3),
+        )
+        w_shop  = st.select_slider(
+            "🛒 슬세권", options=_STAR_OPTIONS,
+            format_func=lambda x: _STAR_LABELS[x],
+            value=prev_weights.get("슬세권", 3),
+        )
+        w_green = st.select_slider(
+            "🌿 쾌적성", options=_STAR_OPTIONS,
+            format_func=lambda x: _STAR_LABELS[x],
+            value=prev_weights.get("쾌적성", 3),
+        )
+        lifestyle_weights = {"학군": w_hak, "역세권": w_rail, "슬세권": w_shop, "쾌적성": w_green}
+        st.session_state["lifestyle_weights"] = lifestyle_weights
+
+        # 정규화된 비중 미리보기
+        _total_w = sum(lifestyle_weights.values()) or 1
+        _norm_preview = " · ".join(
+            f"<b style='color:#7EC8E3;'>{k}</b> {v/_total_w*100:.0f}%"
+            for k, v in lifestyle_weights.items()
+        )
+        st.markdown(
+            f"<div style='font-size:11px;color:#445566;margin-top:4px;line-height:1.8;'>"
+            f"반영 비중 — {_norm_preview}</div>",
+            unsafe_allow_html=True,
+        )
 
         st.markdown("---")
         st.markdown(
@@ -489,7 +520,7 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    selected_prefs = st.session_state.get("lifestyle_prefs", [])
+    lifestyle_weights = st.session_state.get("lifestyle_weights", {"학군": 3, "역세권": 3, "슬세권": 3, "쾌적성": 3})
     col_per_btn, col_per_hint = st.columns([2, 5])
     with col_per_btn:
         run_personal = st.button(
@@ -498,23 +529,20 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
             use_container_width=True,
         )
     with col_per_hint:
-        if selected_prefs:
-            pref_str = " · ".join(selected_prefs)
-            st.markdown(
-                f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
-                f"선택 우선순위: <b style='color:{MINT};'>{pref_str}</b></div>",
-                unsafe_allow_html=True,
-            )
-        else:
-            st.markdown(
-                f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
-                f"사이드바에서 선호도를 선택 후 실행하세요.</div>",
-                unsafe_allow_html=True,
-            )
+        _tw = sum(lifestyle_weights.values()) or 1
+        _wt_preview = " · ".join(
+            f"<b style='color:{MINT};'>{k}</b> {v/_tw*100:.0f}%"
+            for k, v in lifestyle_weights.items()
+        )
+        st.markdown(
+            f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
+            f"가중 반영 비중 — {_wt_preview}</div>",
+            unsafe_allow_html=True,
+        )
 
     if run_personal:
         with st.spinner("Cortex AI가 맞춤 주거 점수를 산출 중입니다..."):
-            per = compute_personalized_score(selected_prefs, tgt_data, sf_client)
+            per = compute_personalized_score(lifestyle_weights, tgt_data, sf_client)
             st.session_state["personal_result"] = per
 
     per = st.session_state.get("personal_result")
@@ -523,21 +551,25 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         pcolor = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
         col_per1, col_per2 = st.columns([1, 2])
         with col_per1:
-            prefs_tags = "".join(
+            # 가중치 태그 렌더링
+            _weights_display = per.get("weights", {})
+            _tw2 = sum(_weights_display.values()) or 1
+            weight_tags = "".join(
                 f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
                 f"border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;"
-                f"margin-right:4px;'>{v}</span>"
-                for v in per.get("selected_values", [])
+                f"margin-right:4px;margin-bottom:4px;display:inline-block;'>"
+                f"{'⭐'*v} {k} {v/_tw2*100:.0f}%</span>"
+                for k, v in _weights_display.items()
             ) or f"<span style='color:#445566;font-size:11px;'>전체 기준</span>"
             st.markdown(
                 f"<div class='card' style='border-color:{pcolor}44;text-align:center;'>"
                 f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>"
-                f"🎯 나만의 맞춤 가치 점수</div>"
+                f"⭐ 가중합 맞춤 가치 점수</div>"
                 f"<div class='score-value {score_class(pscore)}' "
                 f"style='font-size:64px;color:{pcolor};"
                 f"text-shadow:0 0 20px {pcolor};'>{pscore}</div>"
-                f"<div style='font-size:11px;color:#445566;margin-top:8px;'>/100점</div>"
-                f"<div style='margin-top:10px;'>{prefs_tags}</div>"
+                f"<div style='font-size:11px;color:#445566;margin-top:8px;'>/100점 (Weighted Sum)</div>"
+                f"<div style='margin-top:10px;line-height:2;'>{weight_tags}</div>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
@@ -554,8 +586,29 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
                 f"<div class='card' style='border-color:{pcolor}33;'>"
                 f"<div style='font-size:13px;font-weight:700;color:{pcolor};"
                 f"margin-bottom:12px;'>"
-                f"Snowflake Cortex AI 맞춤 분석 근거</div>"
+                f"Snowflake Cortex AI 가중합 분석 근거</div>"
                 f"{exp_html}</div>",
+                unsafe_allow_html=True,
+            )
+
+        # ── MISSION 3: 취향 정합성 코멘트 ─────────────────────────────────
+        matching_comment = per.get("matching_comment", "")
+        if matching_comment:
+            has_warning = "⚠️" in matching_comment or "경고" in matching_comment or "부족" in matching_comment
+            mc_color = YELLOW_NEO if has_warning else MINT
+            mc_lines = [l.strip() for l in matching_comment.split("\n") if l.strip()]
+            mc_html = "".join(
+                f"<div style='margin-bottom:8px;padding:10px 14px;"
+                f"background:#0D1117;border-left:3px solid {mc_color}55;"
+                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+                f"{line}</div>"
+                for line in mc_lines
+            )
+            st.markdown(
+                f"<div class='card' style='border-color:{mc_color}44;margin-top:12px;'>"
+                f"<div style='font-size:13px;font-weight:700;color:{mc_color};margin-bottom:12px;'>"
+                f"🔍 Cortex AI 취향 정합성(Matching) 분석</div>"
+                f"{mc_html}</div>",
                 unsafe_allow_html=True,
             )
     else:
