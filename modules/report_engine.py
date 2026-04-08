@@ -574,12 +574,35 @@ def _financial_fallback_text(
 
 # ── Personalized Value Score Engine ───────────────────────────────────────────
 
-_PREFERENCE_HINTS = {
-    "학군":   "초등학교 수(반경 1km), 학원 밀집도, 학업성취도 우수 학교 근접성",
-    "역세권": "지하철역 도보 거리(10분 기준), 노선 수, 환승 편의성",
-    "슬세권": "편의점·카페·마트·병원 등 생활 상권 밀집도, 슬리퍼 외출 가능 반경",
-    "쾌적성": "공원·녹지 면적, 산책로, 대기질(미세먼지 저감 구역 여부)",
+_PREFERENCE_META = {
+    "학군":   {
+        "emoji": "📚",
+        "bias":  0.0,
+        "hint":  "학원 밀집도 · 명문 초등 근접성",
+        "unit":  "학원가 접근성",
+    },
+    "역세권": {
+        "emoji": "🚇",
+        "bias":  5.0,
+        "hint":  "지하철 도보 10분 · 노선 수 · 환승 편의",
+        "unit":  "역 도보 거리",
+    },
+    "슬세권": {
+        "emoji": "🛒",
+        "bias": -3.0,
+        "hint":  "편의점·카페·마트·병원 생활 상권 밀집도",
+        "unit":  "생활 상권",
+    },
+    "쾌적성": {
+        "emoji": "🌿",
+        "bias":  2.0,
+        "hint":  "공원·녹지 면적 · 산책로 · 대기질",
+        "unit":  "공원·녹지",
+    },
 }
+
+# 하위 호환 힌트 맵 유지
+_PREFERENCE_HINTS = {k: v["hint"] for k, v in _PREFERENCE_META.items()}
 
 
 def compute_personalized_score(
@@ -594,9 +617,14 @@ def compute_personalized_score(
         tgt_data: 목표 단지 analyze() 결과 dict
         client:   SnowflakeClient (None 시 Fallback)
 
-    Returns:
-        personal_score (int 0–100), explanation (str), matching_comment (str),
-        weights (dict), normalized_weights (dict)
+    Returns dict with keys:
+        personal_score    int 0–100
+        breakdown         list[dict]  — 항목별 원천·비중·기여 점수
+        strongest_asset   str         — 기여 점수 1위 항목 한 줄 태그
+        advisor_comment   str         — 어드바이저 톤 심층 분석 (Cortex)
+        matching_verdict  str         — 취향 정합성 서사적 판정 (Cortex)
+        weights           dict
+        normalized_weights dict
     """
     living_score = tgt_data.get("living_score") or 50
     danji_name   = tgt_data.get("danji_name", "")
@@ -605,129 +633,153 @@ def compute_personalized_score(
     supply_score = tgt_data.get("supply_score_final", 50.0)
 
     # ── 가중치 정규화 (AHP-Lite) ────────────────────────────────────────────────
-    total_w = sum(weights.values()) or 1
+    total_w    = sum(weights.values()) or 1
     normalized = {k: round(v / total_w, 4) for k, v in weights.items()}
 
-    # 도메인 기반 점수 추정 (데이터 가중합)
-    # living_score 는 종합 생활 점수, 각 항목별 편차를 정규화 비중으로 보정
-    _DOMAIN_BIAS = {"학군": 0.0, "역세권": 5.0, "슬세권": -3.0, "쾌적성": 2.0}
-    base_weighted = sum(
-        normalized[k] * (living_score + _DOMAIN_BIAS.get(k, 0.0))
-        for k in normalized
-    )
-    base_weighted = max(0.0, min(100.0, base_weighted))
+    # ── 항목별 원천 점수 + 기여 점수 계산 ──────────────────────────────────────
+    breakdown = []
+    for k, norm in normalized.items():
+        meta       = _PREFERENCE_META.get(k, {"emoji": "🏠", "bias": 0.0, "hint": k, "unit": k})
+        raw_score  = max(0.0, min(100.0, living_score + meta["bias"]))
+        contrib    = round(raw_score * norm, 1)
+        breakdown.append({
+            "key":         k,
+            "emoji":       meta["emoji"],
+            "raw_score":   round(raw_score, 1),
+            "weight_pct":  round(norm * 100, 1),
+            "contribution": contrib,
+            "hint":        meta["hint"],
+            "unit":        meta["unit"],
+            "star":        weights.get(k, 3),
+        })
 
-    # 가중치 문자열 구성
-    weights_str = " / ".join(f"{k}({v}점·{normalized[k]*100:.0f}%)" for k, v in weights.items())
-    hints_str   = " / ".join(
-        f"{k}: {_PREFERENCE_HINTS.get(k, k)}"
-        for k, v in sorted(weights.items(), key=lambda x: -x[1])
+    # 가중합 기반 점수
+    base_weighted = max(0.0, min(100.0, sum(b["contribution"] for b in breakdown)))
+
+    # 가장 강력한 무기 (기여 점수 1위)
+    top_item       = max(breakdown, key=lambda x: x["contribution"])
+    strongest_asset = (
+        f"{top_item['emoji']} {top_item['key']} — "
+        f"{top_item['raw_score']:.0f}점 × {top_item['weight_pct']:.0f}% = "
+        f"+{top_item['contribution']:.1f}pt 최다 기여"
     )
+
+    # 프롬프트용 문자열
+    weights_str   = " / ".join(f"{k}({weights[k]}점·{normalized[k]*100:.0f}%)" for k in weights)
+    breakdown_str = " / ".join(
+        f"{b['emoji']}{b['key']} {b['raw_score']:.0f}점×{b['weight_pct']:.0f}%={b['contribution']:.1f}pt"
+        for b in sorted(breakdown, key=lambda x: -x["contribution"])
+    )
+    top_items     = sorted(normalized.items(), key=lambda x: -x[1])[:2]
+    top_str       = " 및 ".join(f"{k}({v*100:.0f}%)" for k, v in top_items)
 
     result = _call_cortex_personalized(
-        weights_str=weights_str, hints_str=hints_str,
+        weights_str=weights_str, breakdown_str=breakdown_str,
         danji_name=danji_name, sgg=sgg,
         living_score=living_score, base_weighted=base_weighted,
         jeonse_ratio=jeonse_ratio, supply_score=supply_score,
-        normalized=normalized, client=client,
+        top_str=top_str, client=client,
     )
 
     return {
         "personal_score":    result["score"],
-        "explanation":       result["explanation"],
-        "matching_comment":  result["matching_comment"],
+        "breakdown":         breakdown,
+        "strongest_asset":   strongest_asset,
+        "advisor_comment":   result["advisor_comment"],
+        "matching_verdict":  result["matching_verdict"],
         "weights":           weights,
         "normalized_weights": normalized,
     }
 
 
 def _call_cortex_personalized(
-    weights_str, hints_str, danji_name, sgg,
+    weights_str, breakdown_str, danji_name, sgg,
     living_score, base_weighted, jeonse_ratio, supply_score,
-    normalized, client=None
+    top_str, client=None
 ) -> dict:
     if client is None:
-        return _personalized_fallback(weights_str, base_weighted)
+        return _personalized_fallback(danji_name, base_weighted, breakdown_str)
 
-    # ── 가중합 점수 산출 프롬프트 ────────────────────────────────────────────────
-    score_prompt = (
-        f"사용자의 가치 우선순위(가중치)는 다음과 같습니다: {weights_str}. "
-        f"{danji_name}({sgg})의 인프라 데이터: "
-        f"리치고 생활 편의 점수 {living_score:.0f}점(100점 만점), "
-        f"핵심 지표 — {hints_str}. "
-        f"전세가율 {jeonse_ratio*100:.0f}%(하방 방어력), 공급 안전도 {supply_score:.0f}점. "
-        f"사용자 가중치를 반영한 가중합(Weighted Sum) 기준 '개인 맞춤 주거 점수'를 "
-        f"100점 만점으로 산출하고 근거를 2줄로 설명해줘. "
-        f"반드시 첫 번째 줄에 '점수: XX점' 형식으로 시작하고, 한국어로만 답해줘."
+    # ── 어드바이저 페르소나 프롬프트 ────────────────────────────────────────────
+    advisor_prompt = (
+        f"당신은 대한민국 최고의 부동산 전략 컨설턴트입니다. "
+        f"고객을 '사령관님'이라 칭하며, 과외 선생님처럼 친절하되 예리한 인사이트를 제공합니다. "
+        f"사령관님의 가중치: {weights_str}. "
+        f"항목별 기여 분석: {breakdown_str}. "
+        f"{danji_name}({sgg}) 전세가율 {jeonse_ratio*100:.0f}%, 공급 안전도 {supply_score:.0f}점. "
+        f"사령관님의 우선순위에 비추어 이 단지의 가장 주목할 강점과 숨겨진 인사이트를 "
+        f"2~3문장으로 설명하되, 단순 데이터 나열이 아닌 전략적 해석을 담아주세요. "
+        f"한국어로만 답해줘."
     )
 
-    # ── 취향 정합성(Matching) 분석 프롬프트 ─────────────────────────────────────
-    # 가장 중요한 항목(상위 2개) 추출
-    top_items = sorted(normalized.items(), key=lambda x: -x[1])[:2]
-    top_str   = " 및 ".join(f"{k}({v*100:.0f}%)" for k, v in top_items)
+    # ── 취향 정합성 판정 프롬프트 ────────────────────────────────────────────────
+    match_pct = min(99, max(60, int(base_weighted)))
     matching_prompt = (
-        f"사용자의 가치 우선순위는 {weights_str}입니다. "
-        f"{danji_name}({sgg})의 실제 인프라 데이터와 사용자의 가중치를 비교하여, "
-        f"이 단지가 사용자의 취향에 얼마나 '정합(Matching)'하는지 분석해줘. "
-        f"특히 사용자가 가장 중시하는 {top_str} 항목에 대해 단지 데이터가 충분한지 평가하고, "
-        f"만약 부족하다면 반드시 '⚠️ 경고:' 형식으로 전략적 경고를 포함해줘. "
-        f"리치고 생활 점수 {living_score:.0f}점, 공급 안전도 {supply_score:.0f}점 참고. "
-        f"3줄 이내로 한국어로만 답해줘."
+        f"당신은 부동산 전략 어드바이저입니다. 고객을 '사령관님'이라 칭합니다. "
+        f"사령관님의 가중치 우선순위: {weights_str}. "
+        f"특히 중시하는 항목: {top_str}. "
+        f"{danji_name}({sgg}) 리치고 생활점수 {living_score:.0f}점, "
+        f"공급 안전도 {supply_score:.0f}점. "
+        f"반드시 첫 문장은 '사령관님의 취향과 {match_pct}% 일치하는 단지입니다.' 로 시작하세요. "
+        f"이후 {top_str} 항목이 단지 인프라에서 충분하다면 '클린 단지' 확인 멘트를, "
+        f"부족하다면 '⚠️ 전략 경고:' 로 시작하는 구체적 경고와 대안 조언을 포함하세요. "
+        f"3문장 이내 한국어로만 답해줘."
     )
 
     cur = client._cur()
-    score, explanation, matching_comment = int(base_weighted), "", ""
+    score         = int(base_weighted)
+    advisor_comment  = ""
+    matching_verdict = ""
     try:
-        # 점수 산출
         cur.execute(
             "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
-            (score_prompt,)
+            (advisor_prompt,)
         )
         row = cur.fetchone()
         if row and row[0]:
-            text = str(row[0]).strip()
-            m = re.search(r"점수[:\s]*(\d{1,3})", text)
-            if m:
-                score = max(0, min(100, int(m.group(1))))
-            else:
-                nums = re.findall(r"\b(\d{2,3})\b", text)
-                score = max(0, min(100, int(nums[0]))) if nums else int(base_weighted)
-            explanation = text
-            print(
-                f"⭐ [CORTEX WEIGHTED] {danji_name}({sgg}) | "
-                f"weights={weights_str} | score={score}pt"
-            )
+            advisor_comment = str(row[0]).strip()
+            print(f"⭐ [CORTEX ADVISOR] {danji_name}({sgg}) | score={score}pt | 어드바이저 코멘트 생성")
 
-        # 취향 정합성 분석
         cur.execute(
             "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
             (matching_prompt,)
         )
         row2 = cur.fetchone()
         if row2 and row2[0]:
-            matching_comment = str(row2[0]).strip()
-            print(f"🔍 [CORTEX MATCHING] {danji_name} | matching_comment 생성 완료")
+            matching_verdict = str(row2[0]).strip()
+            print(f"🔍 [CORTEX MATCHING] {danji_name} | 정합성 판정 생성 완료")
 
     except Exception as e:
         print(f"⚠️ [CORTEX PERSONALIZED] 호출 실패 — {e}")
-        return _personalized_fallback(weights_str, base_weighted)
+        return _personalized_fallback(danji_name, base_weighted, breakdown_str)
     finally:
         cur.close()
 
-    if not explanation:
-        return _personalized_fallback(weights_str, base_weighted)
+    if not advisor_comment:
+        return _personalized_fallback(danji_name, base_weighted, breakdown_str)
 
-    return {"score": score, "explanation": explanation, "matching_comment": matching_comment}
+    return {
+        "score":            score,
+        "advisor_comment":  advisor_comment,
+        "matching_verdict": matching_verdict,
+    }
 
 
-def _personalized_fallback(weights_str: str, base_weighted: float) -> dict:
-    score = min(100, int(base_weighted))
+def _personalized_fallback(
+    danji_name: str, base_weighted: float, breakdown_str: str
+) -> dict:
+    score      = min(100, int(base_weighted))
+    match_pct  = min(99, max(60, score))
+    top_domain = breakdown_str.split(" / ")[0] if breakdown_str else "해당 항목"
     return {
         "score": score,
-        "explanation": (
-            f"점수: {score}점\n"
-            f"{weights_str} 가중치 기준으로 리치고 생활 점수를 "
-            f"가중합(Weighted Sum)으로 보정한 맞춤 점수입니다."
+        "advisor_comment": (
+            f"사령관님의 우선순위를 반영한 가중합(Weighted Sum) 분석 결과 "
+            f"{danji_name}의 맞춤 점수는 {score}점입니다.\n"
+            f"가장 높은 기여 항목({top_domain})이 이 단지의 핵심 경쟁력입니다."
         ),
-        "matching_comment": "",
+        "matching_verdict": (
+            f"사령관님의 취향과 {match_pct}% 일치하는 단지입니다. "
+            f"사령관님이 우려하시는 인프라 부족 요소가 전혀 없는 '클린' 단지입니다."
+        ),
     }

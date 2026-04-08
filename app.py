@@ -24,6 +24,9 @@ from modules.styles import (
 
 load_dotenv()
 
+# ── Preference Emoji Map (UI 상수) ────────────────────────────────────────────
+_PREF_EMOJI = {"학군": "📚", "역세권": "🚇", "슬세권": "🛒", "쾌적성": "🌿"}
+
 # ── Page Config (must be first Streamlit call) ────────────────────────────────
 st.set_page_config(
     page_title="Moving-Up 마스터 | AI 부동산 비서",
@@ -547,68 +550,152 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
 
     per = st.session_state.get("personal_result")
     if per:
-        pscore = per["personal_score"]
-        pcolor = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
-        col_per1, col_per2 = st.columns([1, 2])
-        with col_per1:
-            # 가중치 태그 렌더링
-            _weights_display = per.get("weights", {})
-            _tw2 = sum(_weights_display.values()) or 1
-            weight_tags = "".join(
-                f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
-                f"border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;"
-                f"margin-right:4px;margin-bottom:4px;display:inline-block;'>"
-                f"{'⭐'*v} {k} {v/_tw2*100:.0f}%</span>"
+        pscore  = per["personal_score"]
+        pcolor  = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
+        pgrade  = "최적합" if pscore >= 75 else ("적합" if pscore >= 50 else "재검토")
+        pglyph  = "✅" if pscore >= 75 else ("⚠️" if pscore >= 50 else "🚨")
+        breakdown       = per.get("breakdown", [])
+        advisor_comment = per.get("advisor_comment", "")
+        matching_verdict= per.get("matching_verdict", "")
+        strongest_asset = per.get("strongest_asset", "")
+        _weights_display= per.get("weights", {})
+        _tw2            = sum(_weights_display.values()) or 1
+
+        # ── 상단: 종합 점수 카드 (1) + 어드바이저 리포트 (1.5) ──────────────
+        col_score, col_report = st.columns([1, 1.5])
+
+        with col_score:
+            # 별점 요약 태그
+            star_tags = "".join(
+                f"<div style='display:flex;justify-content:space-between;"
+                f"align-items:center;margin-bottom:6px;'>"
+                f"<span style='color:#B0C8D8;font-size:12px;'>"
+                f"{_PREF_EMOJI.get(k,'⭐')} {k}</span>"
+                f"<span style='color:{pcolor};font-size:12px;font-weight:700;'>"
+                f"{'★'*v}{'☆'*(5-v)} {v/_tw2*100:.0f}%</span>"
+                f"</div>"
                 for k, v in _weights_display.items()
-            ) or f"<span style='color:#445566;font-size:11px;'>전체 기준</span>"
+            )
             st.markdown(
-                f"<div class='card' style='border-color:{pcolor}44;text-align:center;'>"
-                f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>"
-                f"⭐ 가중합 맞춤 가치 점수</div>"
-                f"<div class='score-value {score_class(pscore)}' "
-                f"style='font-size:64px;color:{pcolor};"
-                f"text-shadow:0 0 20px {pcolor};'>{pscore}</div>"
-                f"<div style='font-size:11px;color:#445566;margin-top:8px;'>/100점 (Weighted Sum)</div>"
-                f"<div style='margin-top:10px;line-height:2;'>{weight_tags}</div>"
+                f"<div class='card' style='border-color:{pcolor}55;'>"
+                f"<div style='font-size:11px;color:#445566;margin-bottom:4px;letter-spacing:1px;'>"
+                f"WEIGHTED MATCH SCORE</div>"
+                f"<div style='display:flex;align-items:baseline;gap:8px;margin-bottom:4px;'>"
+                f"<span style='font-size:64px;font-weight:900;color:{pcolor};"
+                f"text-shadow:0 0 24px {pcolor};line-height:1;'>{pscore}</span>"
+                f"<span style='color:#445566;font-size:14px;'>/100</span>"
+                f"</div>"
+                f"<div style='background:{pcolor}22;border:1px solid {pcolor}44;"
+                f"border-radius:20px;padding:3px 12px;display:inline-block;"
+                f"font-size:12px;font-weight:700;color:{pcolor};margin-bottom:16px;'>"
+                f"{pglyph} {pgrade}</div>"
+                f"<hr style='border-color:#1E3A5F;margin:0 0 12px 0;'>"
+                f"<div style='font-size:11px;color:#445566;margin-bottom:8px;font-weight:600;'>"
+                f"사령관님의 우선순위</div>"
+                f"{star_tags}"
                 f"</div>",
                 unsafe_allow_html=True,
             )
-        with col_per2:
-            exp_lines = [l.strip() for l in per["explanation"].split("\n") if l.strip()]
-            exp_html = "".join(
-                f"<div style='margin-bottom:8px;padding:10px 14px;"
-                f"background:#0D1117;border-left:3px solid {pcolor}44;"
-                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+
+        with col_report:
+            # 어드바이저 코멘트
+            adv_lines = [l.strip() for l in advisor_comment.split("\n") if l.strip()]
+            adv_html  = "".join(
+                f"<div style='margin-bottom:10px;padding:11px 15px;"
+                f"background:#0A1520;border-left:3px solid {pcolor}55;"
+                f"border-radius:0 8px 8px 0;font-size:13px;color:#C8D8E8;line-height:1.7;'>"
                 f"{line}</div>"
-                for line in exp_lines
+                for line in adv_lines
+            )
+            # 강점 자산 태그
+            asset_tag = (
+                f"<div style='margin-top:10px;padding:8px 14px;"
+                f"background:linear-gradient(90deg,{pcolor}18,transparent);"
+                f"border:1px solid {pcolor}44;border-radius:8px;"
+                f"font-size:12px;color:{pcolor};font-weight:600;'>"
+                f"🏆 이 단지의 가장 강력한 무기 &nbsp;|&nbsp; {strongest_asset}"
+                f"</div>"
+                if strongest_asset else ""
             )
             st.markdown(
                 f"<div class='card' style='border-color:{pcolor}33;'>"
                 f"<div style='font-size:13px;font-weight:700;color:{pcolor};"
-                f"margin-bottom:12px;'>"
-                f"Snowflake Cortex AI 가중합 분석 근거</div>"
-                f"{exp_html}</div>",
+                f"margin-bottom:12px;letter-spacing:0.3px;'>"
+                f"🤖 Cortex AI 전략 어드바이저 리포트</div>"
+                f"{adv_html}{asset_tag}</div>",
                 unsafe_allow_html=True,
             )
 
-        # ── MISSION 3: 취향 정합성 코멘트 ─────────────────────────────────
-        matching_comment = per.get("matching_comment", "")
-        if matching_comment:
-            has_warning = "⚠️" in matching_comment or "경고" in matching_comment or "부족" in matching_comment
-            mc_color = YELLOW_NEO if has_warning else MINT
-            mc_lines = [l.strip() for l in matching_comment.split("\n") if l.strip()]
-            mc_html = "".join(
-                f"<div style='margin-bottom:8px;padding:10px 14px;"
-                f"background:#0D1117;border-left:3px solid {mc_color}55;"
-                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+        # ── 항목별 기여 분석 그리드 ───────────────────────────────────────────
+        if breakdown:
+            st.markdown(
+                f"<div style='font-size:14px;font-weight:700;color:#7EC8E3;"
+                f"margin:20px 0 10px 0;letter-spacing:0.5px;'>"
+                f"📐 항목별 기여 점수 분해 (Value × Weight → Contribution)</div>",
+                unsafe_allow_html=True,
+            )
+            grid_cols = st.columns(len(breakdown))
+            for col, b in zip(grid_cols, breakdown):
+                b_color = (
+                    MINT       if b["contribution"] >= 20 else
+                    YELLOW_NEO if b["contribution"] >= 12 else
+                    "#445566"
+                )
+                star_filled = "★" * b["star"] + "☆" * (5 - b["star"])
+                with col:
+                    st.markdown(
+                        f"<div style='background:#0D1B2A;border:1px solid #1E3A5F;"
+                        f"border-top:3px solid {b_color};border-radius:10px;"
+                        f"padding:14px 12px;text-align:center;'>"
+                        # 이모지 + 항목명
+                        f"<div style='font-size:22px;margin-bottom:4px;'>{b['emoji']}</div>"
+                        f"<div style='font-size:13px;font-weight:700;color:#E0F0FF;"
+                        f"margin-bottom:10px;'>{b['key']}</div>"
+                        # 원천 점수 → 비중 → 기여
+                        f"<div style='font-size:11px;color:#445566;margin-bottom:2px;'>"
+                        f"원천 점수</div>"
+                        f"<div style='font-size:20px;font-weight:800;color:#B0C8D8;"
+                        f"margin-bottom:4px;'>{b['raw_score']:.0f}<span style='font-size:11px;'>점</span></div>"
+                        f"<div style='font-size:16px;color:#334455;margin:2px 0;'>×</div>"
+                        f"<div style='font-size:11px;color:#445566;margin-bottom:2px;'>"
+                        f"반영 비중</div>"
+                        f"<div style='font-size:18px;font-weight:700;color:#7EC8E3;"
+                        f"margin-bottom:4px;'>{b['weight_pct']:.0f}<span style='font-size:11px;'>%</span></div>"
+                        f"<div style='font-size:16px;color:#334455;margin:2px 0;'>▼</div>"
+                        f"<div style='background:{b_color}22;border:1px solid {b_color}44;"
+                        f"border-radius:6px;padding:4px 0;margin-top:4px;'>"
+                        f"<div style='font-size:10px;color:{b_color};margin-bottom:1px;'>"
+                        f"기여 점수</div>"
+                        f"<div style='font-size:22px;font-weight:900;color:{b_color};'>"
+                        f"+{b['contribution']:.1f}<span style='font-size:11px;'>pt</span></div>"
+                        f"</div>"
+                        # 별점
+                        f"<div style='font-size:11px;color:#556677;margin-top:8px;'>"
+                        f"{star_filled}</div>"
+                        f"<div style='font-size:10px;color:#334455;margin-top:4px;"
+                        f"line-height:1.4;'>{b['hint']}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+        # ── 취향 정합성 판정 ─────────────────────────────────────────────────
+        if matching_verdict:
+            has_warning = "⚠️" in matching_verdict or "경고" in matching_verdict
+            mv_color    = YELLOW_NEO if has_warning else MINT
+            mv_lines    = [l.strip() for l in matching_verdict.split("\n") if l.strip()]
+            mv_html     = "".join(
+                f"<div style='margin-bottom:8px;padding:12px 16px;"
+                f"background:#0A1520;border-left:3px solid {mv_color}55;"
+                f"border-radius:0 8px 8px 0;font-size:13px;color:#C8D8E8;line-height:1.7;'>"
                 f"{line}</div>"
-                for line in mc_lines
+                for line in mv_lines
             )
             st.markdown(
-                f"<div class='card' style='border-color:{mc_color}44;margin-top:12px;'>"
-                f"<div style='font-size:13px;font-weight:700;color:{mc_color};margin-bottom:12px;'>"
-                f"🔍 Cortex AI 취향 정합성(Matching) 분석</div>"
-                f"{mc_html}</div>",
+                f"<div class='card' style='border-color:{mv_color}44;margin-top:12px;'>"
+                f"<div style='font-size:13px;font-weight:700;color:{mv_color};"
+                f"margin-bottom:12px;letter-spacing:0.3px;'>"
+                f"🔍 Cortex AI 취향 정합성 판정</div>"
+                f"{mv_html}</div>",
                 unsafe_allow_html=True,
             )
     else:
