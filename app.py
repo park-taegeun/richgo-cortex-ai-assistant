@@ -90,28 +90,56 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
         if is_same:
             st.warning("현재 단지와 목표 단지가 동일합니다. 다른 단지를 선택하십시오.")
 
-        if st.button("설정 완료", use_container_width=True, disabled=is_same):
-            with st.spinner("AI가 실거래 데이터를 정밀 분석 중입니다..."):
+        # ── Kill Switch: 분석 실행 / 중지 ────────────────────────────────────
+        _has_results  = bool(st.session_state.get("cur_data"))
+        _is_analyzing = st.session_state.get("_analyzing", False)
+
+        if _is_analyzing:
+            # 분석 중: 중지 버튼 노출
+            if st.button("🛑 분석 중지", use_container_width=True, type="secondary",
+                         help="분석을 중단하고 단지 선택 화면으로 돌아갑니다."):
+                for _k in ["cur_data", "tgt_data", "financial_result",
+                           "personal_result", "_analyzing"]:
+                    st.session_state.pop(_k, None)
+                st.rerun()
+            with st.spinner("Cortex AI가 실거래 데이터를 정밀 분석 중입니다..."):
                 try:
                     cur_res = engine.analyze(selected_current["DANJI_ID"])
                     tgt_res = engine.analyze(selected_target["DANJI_ID"])
                     if cur_res is None or tgt_res is None:
+                        st.session_state["_analyzing"] = False
                         st.info(
                             "해당 단지의 실거래 데이터 결측이 감지되어, "
                             "인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)"
                         )
                     else:
-                        st.session_state["cur_data"] = cur_res
-                        st.session_state["tgt_data"] = tgt_res
-                        # Cortex 재무·개인화 결과 초기화 (단지 변경 시 재산출)
+                        st.session_state.update({
+                            "cur_data":  cur_res,
+                            "tgt_data":  tgt_res,
+                            "_analyzing": False,
+                        })
                         st.session_state.pop("financial_result", None)
                         st.session_state.pop("personal_result",  None)
-                        st.success("설정 완료")
                 except Exception:
+                    st.session_state["_analyzing"] = False
                     st.info(
                         "해당 단지의 실거래 데이터 결측이 감지되어, "
                         "인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)"
                     )
+        else:
+            # 대기 중: 실행 버튼 노출
+            if st.button("✅ 설정 완료", use_container_width=True, disabled=is_same):
+                st.session_state["_analyzing"] = True
+                st.rerun()
+            # 결과가 있을 때만 초기화 버튼 노출
+            if _has_results:
+                if st.button("🔄 단지 재설정",
+                             use_container_width=True,
+                             help="현재 분석 결과를 초기화하고 새로운 단지를 설정합니다."):
+                    for _k in ["cur_data", "tgt_data", "financial_result",
+                               "personal_result", "_analyzing"]:
+                        st.session_state.pop(_k, None)
+                    st.rerun()
 
         # ── 엔진 세션 저장 (대시보드 Cortex 호출용) ──────────────────────────
         if engine:
@@ -160,21 +188,25 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
             "📚 학군",   options=_STAR_OPTIONS,
             format_func=lambda x: _STAR_LABELS[x],
             value=prev_weights.get("학군",   3),
+            help="반경 1km 내 초등학교 수 및 국가 수준 학업성취도 기반 점수를 반영합니다.",
         )
         w_rail  = st.select_slider(
             "🚇 역세권", options=_STAR_OPTIONS,
             format_func=lambda x: _STAR_LABELS[x],
             value=prev_weights.get("역세권", 3),
+            help="지하철역 도보 소요 시간 및 노선별 희소성 가중치를 반영합니다.",
         )
         w_shop  = st.select_slider(
             "🛒 슬세권", options=_STAR_OPTIONS,
             format_func=lambda x: _STAR_LABELS[x],
             value=prev_weights.get("슬세권", 3),
+            help="도보권 내 마트, 병원, 카페 등 생활 편의시설 밀집도를 반영합니다.",
         )
         w_green = st.select_slider(
             "🌿 쾌적성", options=_STAR_OPTIONS,
             format_func=lambda x: _STAR_LABELS[x],
             value=prev_weights.get("쾌적성", 3),
+            help="단지 주변 공원 면적 및 미세먼지 저감 구역 데이터를 반영합니다.",
         )
         lifestyle_weights = {"학군": w_hak, "역세권": w_rail, "슬세권": w_shop, "쾌적성": w_green}
         st.session_state["lifestyle_weights"] = lifestyle_weights

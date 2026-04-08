@@ -89,6 +89,18 @@ def get_all_danji_list(_engine) -> List[Dict]:
 
 # ── Cascading Selector Helper ──────────────────────────────────────────────────
 
+def _strip_sd_prefix(sd: str, sgg: str) -> str:
+    """
+    시/군/구 레이블에서 시/도 접두어를 제거합니다.
+    예: sd='서울특별시', sgg='서울특별시 강남구' → '강남구'
+    """
+    prefix = sd.strip()
+    stripped = sgg.strip()
+    if stripped.startswith(prefix):
+        stripped = stripped[len(prefix):].strip()
+    return stripped or sgg
+
+
 def render_cascading_selector(danji_list: List[Dict], prefix: str) -> Optional[Dict]:
     """
     시/도 → 시/군/구 → 단지명 3단 연동 셀렉터.
@@ -128,6 +140,7 @@ def render_cascading_selector(danji_list: List[Dict], prefix: str) -> Optional[D
 
     selected_sgg = st.selectbox(
         "시/군/구", sgg_list, key=sgg_key,
+        format_func=lambda x: _strip_sd_prefix(selected_sd, x),
         help="선택한 시/도의 세부 구역을 선택하세요.",
     )
 
