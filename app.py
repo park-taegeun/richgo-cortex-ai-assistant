@@ -8,6 +8,7 @@ import streamlit as st
 from modules.data_loader   import get_engine, get_all_danji_list, render_cascading_selector
 from modules.report_engine import (
     build_ai_report, build_delta, generate_detailed_logic,
+    compute_financial_feasibility, compute_personalized_score,
     ALPHA_TRIGGER_DELTA, ALPHA_TRIGGER_MIN,
 )
 from modules.styles import (
@@ -99,12 +100,62 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
                     else:
                         st.session_state["cur_data"] = cur_res
                         st.session_state["tgt_data"] = tgt_res
+                        # Cortex 재무·개인화 결과 초기화 (단지 변경 시 재산출)
+                        st.session_state.pop("financial_result", None)
+                        st.session_state.pop("personal_result",  None)
                         st.success("설정 완료")
                 except Exception:
                     st.info(
                         "해당 단지의 실거래 데이터 결측이 감지되어, "
                         "인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)"
                     )
+
+        # ── 엔진 세션 저장 (대시보드 Cortex 호출용) ──────────────────────────
+        if engine:
+            st.session_state["_engine"] = engine
+
+        st.markdown("---")
+
+        # ── MISSION 1: 보유 현금 입력 ────────────────────────────────────────
+        st.markdown(
+            f"<div class='section-header' style='margin-top:4px;' "
+            f"title='갈아타기 실행을 위한 보유 현금(억 단위)을 입력하세요.'>"
+            f"💰 보유 현금 (억 단위)</div>",
+            unsafe_allow_html=True,
+        )
+        cash_eok = st.number_input(
+            label="보유 현금",
+            min_value=0.0, max_value=100.0, step=0.5,
+            value=float(st.session_state.get("cash_eok", 5.0)),
+            format="%.1f",
+            label_visibility="collapsed",
+        )
+        st.session_state["cash_eok"] = cash_eok
+        st.markdown(
+            f"<div style='font-size:11px;color:#445566;margin-top:-8px;margin-bottom:8px;'>"
+            f"강남3구·용산 LTV 50% / 그 외 LTV 70% 자동 적용</div>",
+            unsafe_allow_html=True,
+        )
+
+        # ── MISSION 2: 라이프스타일 선호도 ───────────────────────────────────
+        st.markdown(
+            f"<div class='section-header' style='margin-top:8px;' "
+            f"title='나만의 주거 가치 우선순위를 선택하세요.'>"
+            f"🎯 나만의 주거 가치 선호도</div>",
+            unsafe_allow_html=True,
+        )
+        prev_prefs = st.session_state.get("lifestyle_prefs", [])
+        pref_hak    = st.checkbox("📚 학군",   value="학군"   in prev_prefs)
+        pref_rail   = st.checkbox("🚇 역세권", value="역세권" in prev_prefs)
+        pref_shop   = st.checkbox("🛒 슬세권", value="슬세권" in prev_prefs)
+        pref_green  = st.checkbox("🌿 쾌적성", value="쾌적성" in prev_prefs)
+        selected_prefs = (
+            (["학군"]   if pref_hak  else []) +
+            (["역세권"] if pref_rail else []) +
+            (["슬세권"] if pref_shop else []) +
+            (["쾌적성"] if pref_green else [])
+        )
+        st.session_state["lifestyle_prefs"] = selected_prefs
 
         st.markdown("---")
         st.markdown(
@@ -347,6 +398,176 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
             f"{d['trigger_text']}</div></div>",
             unsafe_allow_html=True,
         )
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # MISSION 1: 재무 실행 가능성 (Financial Feasibility)
+    # ════════════════════════════════════════════════════════════════════════════
+    st.markdown(
+        f"<div style='font-size:20px;font-weight:800;color:#E8EAF0;margin:28px 0 12px 0;'>"
+        f"재무 실행 가능성 분석</div>",
+        unsafe_allow_html=True,
+    )
+
+    cash_eok       = float(st.session_state.get("cash_eok", 5.0))
+    engine_obj     = st.session_state.get("_engine")
+    sf_client      = engine_obj._client if engine_obj else None
+
+    col_fin_btn, col_fin_hint = st.columns([2, 5])
+    with col_fin_btn:
+        run_financial = st.button(
+            "Cortex AI 재무 판독 실행",
+            key="btn_financial",
+            use_container_width=True,
+        )
+    with col_fin_hint:
+        st.markdown(
+            f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
+            f"보유 현금 <b style='color:#E8EAF0;'>{cash_eok:.1f}억</b> 기준 "
+            f"— 사이드바에서 현금을 수정 후 재실행하세요.</div>",
+            unsafe_allow_html=True,
+        )
+
+    if run_financial:
+        with st.spinner("Cortex AI가 재무 실행 가능성을 판독 중입니다..."):
+            fin = compute_financial_feasibility(cash_eok, tgt_data, sf_client)
+            st.session_state["financial_result"] = fin
+
+    fin = st.session_state.get("financial_result")
+    if fin:
+        vc   = fin["verdict_color"]
+        vl   = fin["verdict_label"]
+        col_fin1, col_fin2 = st.columns([1, 2])
+        with col_fin1:
+            st.markdown(
+                f"<div class='card' style='border-color:{vc}44;text-align:center;'>"
+                f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>재무 판정 배지</div>"
+                f"<div style='font-size:26px;font-weight:900;color:{vc};"
+                f"text-shadow:0 0 16px {vc};margin-bottom:10px;'>{vl}</div>"
+                f"<div style='font-size:11px;color:#445566;line-height:1.8;'>"
+                f"매매가: <b style='color:#E8EAF0;'>{fin['price_eok']:.1f}억</b><br>"
+                f"전세가: <b style='color:#667788;'>{fin['jeonse_eok']:.1f}억</b><br>"
+                f"실투자금(Gap): <b style='color:{vc};'>{fin['gap_eok']:.1f}억</b><br>"
+                f"LTV {int(fin['ltv_rate']*100)}% 대출 한도: <b>{fin['loan_eok']:.1f}억</b><br>"
+                f"총 가용 자금: <b style='color:#E8EAF0;'>{fin['total_eok']:.1f}억</b><br>"
+                f"여유/부족: <b style='color:{vc};'>{fin['surplus_eok']:+.1f}억</b>"
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+        with col_fin2:
+            # Cortex AI 3줄 분석 텍스트
+            lines = [l.strip() for l in fin["cortex_text"].split("\n") if l.strip()]
+            lines_html = "".join(
+                f"<div style='margin-bottom:8px;padding:10px 14px;"
+                f"background:#0D1117;border-left:3px solid {vc}44;"
+                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+                f"{line}</div>"
+                for line in lines
+            )
+            st.markdown(
+                f"<div class='card' style='border-color:{vc}33;'>"
+                f"<div style='font-size:13px;font-weight:700;color:{vc};"
+                f"margin-bottom:12px;'>"
+                f"Snowflake Cortex AI 재무 판독 결과</div>"
+                f"{lines_html}</div>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            f"<div class='card' style='text-align:center;padding:20px;"
+            f"border-color:{BORDER};'>"
+            f"<span style='color:#445566;font-size:13px;'>"
+            f"위의 버튼을 눌러 Cortex AI 재무 판독을 실행하세요.</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # MISSION 2: 나만의 맞춤 가치 (Personalized Value Score)
+    # ════════════════════════════════════════════════════════════════════════════
+    st.markdown(
+        f"<div style='font-size:20px;font-weight:800;color:#E8EAF0;margin:28px 0 12px 0;'>"
+        f"나만의 맞춤 가치 점수</div>",
+        unsafe_allow_html=True,
+    )
+
+    selected_prefs = st.session_state.get("lifestyle_prefs", [])
+    col_per_btn, col_per_hint = st.columns([2, 5])
+    with col_per_btn:
+        run_personal = st.button(
+            "Cortex AI 맞춤 점수 산출",
+            key="btn_personal",
+            use_container_width=True,
+        )
+    with col_per_hint:
+        if selected_prefs:
+            pref_str = " · ".join(selected_prefs)
+            st.markdown(
+                f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
+                f"선택 우선순위: <b style='color:{MINT};'>{pref_str}</b></div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
+                f"사이드바에서 선호도를 선택 후 실행하세요.</div>",
+                unsafe_allow_html=True,
+            )
+
+    if run_personal:
+        with st.spinner("Cortex AI가 맞춤 주거 점수를 산출 중입니다..."):
+            per = compute_personalized_score(selected_prefs, tgt_data, sf_client)
+            st.session_state["personal_result"] = per
+
+    per = st.session_state.get("personal_result")
+    if per:
+        pscore = per["personal_score"]
+        pcolor = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
+        col_per1, col_per2 = st.columns([1, 2])
+        with col_per1:
+            prefs_tags = "".join(
+                f"<span style='background:{MINT}22;color:{MINT};border:1px solid {MINT}44;"
+                f"border-radius:10px;padding:2px 8px;font-size:11px;font-weight:700;"
+                f"margin-right:4px;'>{v}</span>"
+                for v in per.get("selected_values", [])
+            ) or f"<span style='color:#445566;font-size:11px;'>전체 기준</span>"
+            st.markdown(
+                f"<div class='card' style='border-color:{pcolor}44;text-align:center;'>"
+                f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>"
+                f"🎯 나만의 맞춤 가치 점수</div>"
+                f"<div class='score-value {score_class(pscore)}' "
+                f"style='font-size:64px;color:{pcolor};"
+                f"text-shadow:0 0 20px {pcolor};'>{pscore}</div>"
+                f"<div style='font-size:11px;color:#445566;margin-top:8px;'>/100점</div>"
+                f"<div style='margin-top:10px;'>{prefs_tags}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with col_per2:
+            exp_lines = [l.strip() for l in per["explanation"].split("\n") if l.strip()]
+            exp_html = "".join(
+                f"<div style='margin-bottom:8px;padding:10px 14px;"
+                f"background:#0D1117;border-left:3px solid {pcolor}44;"
+                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+                f"{line}</div>"
+                for line in exp_lines
+            )
+            st.markdown(
+                f"<div class='card' style='border-color:{pcolor}33;'>"
+                f"<div style='font-size:13px;font-weight:700;color:{pcolor};"
+                f"margin-bottom:12px;'>"
+                f"Snowflake Cortex AI 맞춤 분석 근거</div>"
+                f"{exp_html}</div>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            f"<div class='card' style='text-align:center;padding:20px;"
+            f"border-color:{BORDER};'>"
+            f"<span style='color:#445566;font-size:13px;'>"
+            f"위의 버튼을 눌러 Cortex AI 맞춤 점수를 산출하세요.</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<div style='margin-bottom:24px;'></div>", unsafe_allow_html=True)
 
     # 초격차 갈아타기 성립 배너
     if d["is_trigger"]:

@@ -6,11 +6,17 @@ Responsibilities:
   - S_alpha 기반 분기 메시지 생성 (3문장 동적 전략 리포트)
   - Alpha-Trigger 조건 평가
   - 점수 Delta 계산
+  - 재무 실행 가능성 분석 (LTV + Cortex AI)
+  - 개인 맞춤 주거 점수 (Cortex AI)
 
 Public API:
   build_ai_report(cur: dict, tgt: dict) → dict
   build_delta(cur: dict, tgt: dict)     → dict
+  compute_financial_feasibility(cash_eok, tgt_data, client) → dict
+  compute_personalized_score(selected_values, tgt_data, client) → dict
 """
+import re
+
 # ── Alpha-Trigger Constants ────────────────────────────────────────────────────
 ALPHA_TRIGGER_DELTA = 20   # 점수 상승 폭 임계값
 ALPHA_TRIGGER_MIN   = 80   # 목표 단지 최소 점수
@@ -20,6 +26,20 @@ _MINT       = "#00FFAA"
 _YELLOW_NEO = "#FFD21E"
 _RED_NEO    = "#FF4B4B"
 _NEUTRAL    = "#E8EAF0"
+
+# ── LTV 규제 지도 (2026-04 기준) ─────────────────────────────────────────────
+# 강남3구(강남·서초·송파) + 용산구 → 50%, 비규제 → 70%
+LTV_MAP: dict = {
+    "강남구": 0.50,
+    "서초구": 0.50,
+    "송파구": 0.50,
+    "용산구": 0.50,
+}
+LTV_DEFAULT = 0.70
+
+
+def get_ltv(sgg: str) -> float:
+    return LTV_MAP.get(sgg, LTV_DEFAULT)
 
 
 # ── Supply Grade Helper ───────────────────────────────────────────────────────
@@ -441,3 +461,224 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
     })
 
     return results
+
+
+# ── Financial Feasibility Engine ───────────────────────────────────────────────
+
+def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) -> dict:
+    """
+    자금 계획 분석 — 갈아타기 재무 실행 가능성 판독.
+
+    Args:
+        cash_eok: 보유 현금 (억 단위, float)
+        tgt_data: 목표 단지 analyze() 결과 dict
+        client:   SnowflakeClient instance (Cortex AI 호출용; None 시 Fallback)
+
+    Returns:
+        price_eok, jeonse_eok, gap_eok, loan_eok, total_eok, surplus_eok,
+        ltv_rate, verdict ("Safe"/"Caution"/"Risk"),
+        verdict_label, verdict_color, cortex_text
+    """
+    price_eok  = round(tgt_data["latest_meme_price_man_won"]  / 10000, 2)
+    jeonse_eok = round(tgt_data["latest_jeonse_price_man_won"] / 10000, 2)
+    sgg        = tgt_data.get("sgg", "")
+    ltv_rate   = get_ltv(sgg)
+
+    gap_eok     = round(price_eok - jeonse_eok, 2)
+    loan_eok    = round(price_eok * ltv_rate,   2)
+    total_eok   = round(cash_eok  + loan_eok,   2)
+    surplus_eok = round(total_eok - price_eok,  2)
+
+    surplus_ratio = surplus_eok / max(price_eok, 1)
+    if surplus_ratio >= 0.10:
+        verdict, verdict_label, verdict_color = "Safe",    "재무적 안전", _MINT
+    elif surplus_ratio >= -0.05:
+        verdict, verdict_label, verdict_color = "Caution", "주의",       _YELLOW_NEO
+    else:
+        verdict, verdict_label, verdict_color = "Risk",    "영끌 위험",   _RED_NEO
+
+    cortex_text = _call_cortex_financial(
+        cash_eok=cash_eok, loan_eok=loan_eok, total_eok=total_eok,
+        price_eok=price_eok, ltv_rate=ltv_rate, sgg=sgg, client=client,
+    )
+
+    return {
+        "price_eok":     price_eok,
+        "jeonse_eok":    jeonse_eok,
+        "gap_eok":       gap_eok,
+        "loan_eok":      loan_eok,
+        "total_eok":     total_eok,
+        "surplus_eok":   surplus_eok,
+        "ltv_rate":      ltv_rate,
+        "verdict":       verdict,
+        "verdict_label": verdict_label,
+        "verdict_color": verdict_color,
+        "cortex_text":   cortex_text,
+    }
+
+
+def _call_cortex_financial(
+    cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg, client=None
+) -> str:
+    if client is None:
+        return _financial_fallback_text(cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg)
+
+    ltv_pct = int(ltv_rate * 100)
+    prompt = (
+        f"사용자 자산 {cash_eok:.1f}억, 가용 대출 {loan_eok:.1f}억"
+        f"({sgg} LTV {ltv_pct}% 적용), 총 가용 {total_eok:.1f}억입니다. "
+        f"목표 단지 매매가는 {price_eok:.1f}억입니다. "
+        f"현재 LTV 규제와 금리 상황을 고려할 때, 이 갈아타기가 '재무적 안전(Safe)', "
+        f"'주의(Caution)', '영끌 위험(Risk)' 중 어디에 해당하는지 "
+        f"3줄로 근거(원리금 상환 부담 등)와 함께 분석해줘. 반드시 한국어로 답해줘."
+    )
+    cur = client._cur()
+    try:
+        cur.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
+            (prompt,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            text = str(row[0]).strip()
+            print(f"🧠 [CORTEX FINANCIAL] {sgg} | cash={cash_eok:.1f}억 | price={price_eok:.1f}억")
+            return text
+    except Exception as e:
+        print(f"⚠️ [CORTEX FINANCIAL] 호출 실패 — {e}")
+    finally:
+        cur.close()
+
+    return _financial_fallback_text(cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg)
+
+
+def _financial_fallback_text(
+    cash_eok, loan_eok, total_eok, price_eok, ltv_rate, sgg
+) -> str:
+    surplus = total_eok - price_eok
+    ltv_pct = int(ltv_rate * 100)
+    if surplus >= 0:
+        return (
+            f"1. {sgg}은(는) LTV {ltv_pct}% 규제 적용 → 대출 한도 {loan_eok:.1f}억.\n"
+            f"2. 보유 현금 {cash_eok:.1f}억 + 대출 {loan_eok:.1f}억 = 총 {total_eok:.1f}억, "
+            f"매매가 {price_eok:.1f}억 대비 {surplus:.1f}억 여유.\n"
+            f"3. 적정 부채비율 유지 시 원리금 상환 부담 감내 가능 — 재무적 안전 구간으로 판단됩니다."
+        )
+    else:
+        return (
+            f"1. {sgg}은(는) LTV {ltv_pct}% 규제 적용 → 대출 한도 {loan_eok:.1f}억.\n"
+            f"2. 총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억 대비 "
+            f"{abs(surplus):.1f}억 부족.\n"
+            f"3. 고금리 환경에서 추가 차입 시 원리금 상환 부담 과중 — 영끌 위험 구간에 해당합니다."
+        )
+
+
+# ── Personalized Value Score Engine ───────────────────────────────────────────
+
+_PREFERENCE_HINTS = {
+    "학군":   "초등학교 수(반경 1km), 학원 밀집도, 학업성취도 우수 학교 근접성",
+    "역세권": "지하철역 도보 거리(10분 기준), 노선 수, 환승 편의성",
+    "슬세권": "편의점·카페·마트·병원 등 생활 상권 밀집도, 슬리퍼 외출 가능 반경",
+    "쾌적성": "공원·녹지 면적, 산책로, 대기질(미세먼지 저감 구역 여부)",
+}
+
+
+def compute_personalized_score(
+    selected_values: list, tgt_data: dict, client=None
+) -> dict:
+    """
+    라이프스타일 선호도 기반 Cortex AI 맞춤형 주거 점수 산출.
+
+    Args:
+        selected_values: ['학군','역세권','슬세권','쾌적성'] 중 선택 항목
+        tgt_data:        목표 단지 analyze() 결과 dict
+        client:          SnowflakeClient (None 시 Fallback)
+
+    Returns:
+        personal_score (int 0–100), explanation (str), selected_values (list)
+    """
+    if not selected_values:
+        base = int(tgt_data.get("living_score") or 50)
+        return {
+            "personal_score":  base,
+            "explanation":     "선호도 항목을 선택하면 맞춤 점수가 산출됩니다.",
+            "selected_values": [],
+        }
+
+    living_score = tgt_data.get("living_score") or 50
+    danji_name   = tgt_data.get("danji_name", "")
+    sgg          = tgt_data.get("sgg", "")
+    jeonse_ratio = tgt_data.get("jeonse_ratio", 0.0)
+    supply_score = tgt_data.get("supply_score_final", 50.0)
+
+    hints        = " / ".join(_PREFERENCE_HINTS.get(v, v) for v in selected_values)
+    selected_str = "·".join(selected_values)
+
+    result = _call_cortex_personalized(
+        selected_str=selected_str, hints=hints,
+        danji_name=danji_name, sgg=sgg,
+        living_score=living_score, jeonse_ratio=jeonse_ratio,
+        supply_score=supply_score, client=client,
+    )
+
+    return {
+        "personal_score":  result["score"],
+        "explanation":     result["explanation"],
+        "selected_values": selected_values,
+    }
+
+
+def _call_cortex_personalized(
+    selected_str, hints, danji_name, sgg,
+    living_score, jeonse_ratio, supply_score, client=None
+) -> dict:
+    if client is None:
+        return _personalized_fallback(selected_str, living_score)
+
+    prompt = (
+        f"사용자는 {selected_str}를 최우선 주거 가치로 여깁니다. "
+        f"{danji_name}({sgg})의 인프라 데이터: "
+        f"리치고 생활 편의 점수 {living_score:.0f}점(100점 만점), "
+        f"핵심 분석 지표 — {hints}. "
+        f"전세가율 {jeonse_ratio*100:.0f}%(하방 방어력), 공급 안전도 {supply_score:.0f}점. "
+        f"이 사용자만을 위한 '개인 맞춤 주거 점수'를 100점 만점으로 산출하고 "
+        f"근거를 2줄로 설명해줘. "
+        f"반드시 첫 번째 줄에 '점수: XX점' 형식으로 시작하고, 한국어로만 답해줘."
+    )
+    cur = client._cur()
+    try:
+        cur.execute(
+            "SELECT SNOWFLAKE.CORTEX.COMPLETE('mistral-7b', %s) AS r",
+            (prompt,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            text = str(row[0]).strip()
+            match = re.search(r"점수[:\s]*(\d{1,3})", text)
+            if match:
+                score = max(0, min(100, int(match.group(1))))
+            else:
+                nums = re.findall(r"\b(\d{2,3})\b", text)
+                score = max(0, min(100, int(nums[0]))) if nums else int(living_score)
+            print(
+                f"🎯 [CORTEX PERSONALIZED] {danji_name}({sgg}) | "
+                f"선호={selected_str} | score={score}pt"
+            )
+            return {"score": score, "explanation": text}
+    except Exception as e:
+        print(f"⚠️ [CORTEX PERSONALIZED] 호출 실패 — {e}")
+    finally:
+        cur.close()
+
+    return _personalized_fallback(selected_str, living_score)
+
+
+def _personalized_fallback(selected_str: str, living_score: float) -> dict:
+    score = min(100, int(living_score * 1.05))
+    return {
+        "score": score,
+        "explanation": (
+            f"점수: {score}점\n"
+            f"{selected_str} 선호 기준으로 리치고 생활 점수({living_score:.0f}점)를 "
+            f"보정한 맞춤 점수입니다."
+        ),
+    }
