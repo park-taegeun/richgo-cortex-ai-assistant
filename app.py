@@ -583,26 +583,13 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         for k, v in lifestyle_weights.items()
     )
 
-    # ── Kill Switch: 산출 실행 / 중지 ────────────────────────────────────────
-    _per_running = st.session_state.get("_per_analyzing", False)
     col_per_btn, col_per_hint = st.columns([2, 5])
     with col_per_btn:
-        if _per_running:
-            if st.button("🛑 산출 중지", key="btn_personal_stop",
-                         use_container_width=True, type="secondary",
-                         help="산출을 중단하고 이전 상태로 돌아갑니다."):
-                st.session_state.pop("_per_analyzing", None)
-                st.session_state.pop("personal_result", None)
-                st.rerun()
-        else:
-            run_personal = st.button(
-                "Cortex AI 맞춤 점수 산출",
-                key="btn_personal",
-                use_container_width=True,
-            )
-            if run_personal:
-                st.session_state["_per_analyzing"] = True
-                st.rerun()
+        run_personal = st.button(
+            "Cortex AI 맞춤 점수 산출",
+            key="btn_personal",
+            use_container_width=True,
+        )
     with col_per_hint:
         st.markdown(
             f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
@@ -611,27 +598,26 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         )
 
     # ── 단계별 게임형 로딩 시스템 ────────────────────────────────────────────
-    if _per_running and not st.session_state.get("personal_result"):
+    if run_personal:
         prog_p   = st.progress(0)
         status_p = st.empty()
 
-        status_p.info("🧬 **[1/4]** 회원님의 4대 가중치(AHP 가중합 모델) 로딩 중...")
+        status_p.info("🧬 **[1/4]** 회원님의 4대 주거 가치 가중치 로딩 중...")
         prog_p.progress(25, text="25% — 가중치 로딩")
         time.sleep(0.35)
 
-        status_p.info("🛰️ **[2/4]** Snowflake 데이터베이스에서 항목별 인프라 원천 점수 매칭 중...")
-        prog_p.progress(50, text="50% — 인프라 점수 매칭")
+        status_p.info("🛰️ **[2/4]** Snowflake 데이터베이스에서 인프라 점수 추출 중...")
+        prog_p.progress(50, text="50% — 인프라 점수 추출")
         time.sleep(0.3)
 
-        status_p.info("🧠 **[3/4]** Cortex AI가 취향 정합성 및 개인 맞춤형 리포트 생성 중...")
+        status_p.info("🧠 **[3/4]** Cortex AI가 개인화 리포트 및 취향 정합성 분석 중...")
         prog_p.progress(75, text="75% — Cortex AI 추론 중")
 
         per = compute_personalized_score(lifestyle_weights, tgt_data, sf_client)
         st.session_state["personal_result"] = per
-        st.session_state["_per_analyzing"]  = False
 
         prog_p.progress(100, text="100% — 완료")
-        status_p.success("✅ **[4/4]** 회원님만을 위한 초개인화 주거 가치 분석 완료!")
+        status_p.success("✅ **[4/4]** 분석 완료! 맞춤 가치 리포트를 확인하세요.")
         time.sleep(0.6)
         prog_p.empty()
         status_p.empty()
