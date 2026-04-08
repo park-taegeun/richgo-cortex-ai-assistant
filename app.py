@@ -577,29 +577,64 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
     )
 
     lifestyle_weights = st.session_state.get("lifestyle_weights", {"학군": 3, "역세권": 3, "슬세권": 3, "쾌적성": 3})
+    _tw = sum(lifestyle_weights.values()) or 1
+    _wt_preview = " · ".join(
+        f"<b style='color:{MINT};'>{k}</b> {v/_tw*100:.0f}%"
+        for k, v in lifestyle_weights.items()
+    )
+
+    # ── Kill Switch: 산출 실행 / 중지 ────────────────────────────────────────
+    _per_running = st.session_state.get("_per_analyzing", False)
     col_per_btn, col_per_hint = st.columns([2, 5])
     with col_per_btn:
-        run_personal = st.button(
-            "Cortex AI 맞춤 점수 산출",
-            key="btn_personal",
-            use_container_width=True,
-        )
+        if _per_running:
+            if st.button("🛑 산출 중지", key="btn_personal_stop",
+                         use_container_width=True, type="secondary",
+                         help="산출을 중단하고 이전 상태로 돌아갑니다."):
+                st.session_state.pop("_per_analyzing", None)
+                st.session_state.pop("personal_result", None)
+                st.rerun()
+        else:
+            run_personal = st.button(
+                "Cortex AI 맞춤 점수 산출",
+                key="btn_personal",
+                use_container_width=True,
+            )
+            if run_personal:
+                st.session_state["_per_analyzing"] = True
+                st.rerun()
     with col_per_hint:
-        _tw = sum(lifestyle_weights.values()) or 1
-        _wt_preview = " · ".join(
-            f"<b style='color:{MINT};'>{k}</b> {v/_tw*100:.0f}%"
-            for k, v in lifestyle_weights.items()
-        )
         st.markdown(
             f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
             f"가중 반영 비중 — {_wt_preview}</div>",
             unsafe_allow_html=True,
         )
 
-    if run_personal:
-        with st.spinner("Cortex AI가 맞춤 주거 점수를 산출 중입니다..."):
-            per = compute_personalized_score(lifestyle_weights, tgt_data, sf_client)
-            st.session_state["personal_result"] = per
+    # ── 단계별 게임형 로딩 시스템 ────────────────────────────────────────────
+    if _per_running and not st.session_state.get("personal_result"):
+        prog_p   = st.progress(0)
+        status_p = st.empty()
+
+        status_p.info("🧬 **[1/4]** 회원님의 4대 가중치(AHP 가중합 모델) 로딩 중...")
+        prog_p.progress(25, text="25% — 가중치 로딩")
+        time.sleep(0.35)
+
+        status_p.info("🛰️ **[2/4]** Snowflake 데이터베이스에서 항목별 인프라 원천 점수 매칭 중...")
+        prog_p.progress(50, text="50% — 인프라 점수 매칭")
+        time.sleep(0.3)
+
+        status_p.info("🧠 **[3/4]** Cortex AI가 취향 정합성 및 개인 맞춤형 리포트 생성 중...")
+        prog_p.progress(75, text="75% — Cortex AI 추론 중")
+
+        per = compute_personalized_score(lifestyle_weights, tgt_data, sf_client)
+        st.session_state["personal_result"] = per
+        st.session_state["_per_analyzing"]  = False
+
+        prog_p.progress(100, text="100% — 완료")
+        status_p.success("✅ **[4/4]** 회원님만을 위한 초개인화 주거 가치 분석 완료!")
+        time.sleep(0.6)
+        prog_p.empty()
+        status_p.empty()
 
     per = st.session_state.get("personal_result")
     if per:
