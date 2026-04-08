@@ -553,17 +553,20 @@ def _call_cortex_financial(
             f"결론은 '재무적 안전' 또는 '주의' 중 하나여야 합니다. "
         )
 
+    # Python에서 판정 이모지 결정 → LLM은 서술만 담당
+    verdict_emoji = "✅" if verdict == "Safe" else ("⚠️" if verdict == "Caution" else "🚨")
+
     prompt = (
+        "당신은 냉철한 자산 심사역입니다.\n"
+        "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
         f"{hard_constraint}\n"
-        f"당신은 냉철한 자산 심사역입니다. 고객을 '회원님'이라 칭합니다. "
-        f"회원님 자산 현황: 보유 현금 {cash_eok:.1f}억 / "
-        f"{sgg} LTV {ltv_pct}% 대출 한도 {loan_eok:.1f}억 / "
-        f"총 가용 {total_eok:.1f}억 / 매매가 {price_eok:.1f}억 / "
-        f"여유·부족분 {surplus_eok:+.1f}억. "
-        f"위 수치를 바탕으로 반드시 다음 형식을 지켜 한국어로만 답해주세요:\n"
-        f"🚨 or ⚠️ or ✅ [판정: 위 기준에 따른 '{verdict}' 계열 단어로 시작]\n"
-        f"💡 [여유·부족분 수치({surplus_eok:+.1f}억)를 명시한 근거 한 문장]\n"
-        f"📌 [회원님께 드리는 핵심 재무 조언 한 줄]"
+        f"[회원님 자산 현황]\n"
+        f"보유 현금: {cash_eok:.1f}억 / {sgg} LTV {ltv_pct}% 대출 한도: {loan_eok:.1f}억\n"
+        f"총 가용: {total_eok:.1f}억 / 매매가: {price_eok:.1f}억 / 여유·부족: {surplus_eok:+.1f}억\n\n"
+        "아래 3줄 형식으로만 출력하세요. 각 줄 사이에 빈 줄을 넣으세요:\n\n"
+        f"{verdict_emoji} 재무 판정: {verdict_emoji} 에 맞는 '{verdict}' 계열의 판정 결론을 한 문장으로\n\n"
+        f"💡 근거: 여유·부족분 {surplus_eok:+.1f}억 수치를 반드시 포함하여 근거를 한 문장으로\n\n"
+        f"📌 핵심 조언: 회원님께 드리는 실행 가능한 재무 전략을 한 문장으로"
     )
     cur = client._cur()
     try:
@@ -710,7 +713,7 @@ def compute_personalized_score(
         danji_name=danji_name, sgg=sgg,
         living_score=living_score, base_weighted=base_weighted,
         jeonse_ratio=jeonse_ratio, supply_score=supply_score,
-        top_str=top_str, client=client,
+        top_str=top_str, breakdown=breakdown, client=client,
     )
 
     return {
@@ -727,37 +730,57 @@ def compute_personalized_score(
 def _call_cortex_personalized(
     weights_str, breakdown_str, danji_name, sgg,
     living_score, base_weighted, jeonse_ratio, supply_score,
-    top_str, client=None
+    top_str, breakdown, client=None
 ) -> dict:
     if client is None:
         return _personalized_fallback(danji_name, base_weighted, breakdown_str)
 
-    # ── 어드바이저 페르소나 프롬프트 ────────────────────────────────────────────
+    # ── Python에서 분기 선결정 (조건부 지시문 프롬프트 노출 차단) ────────────────
+    top_b  = max(breakdown, key=lambda x: x["contribution"])
+    weak_b = min(breakdown, key=lambda x: x["contribution"])
+    match_pct = min(99, max(60, int(base_weighted)))
+
+    # 최우선 항목의 원천 점수로 충분도 판정
+    top_key_b = max(breakdown, key=lambda x: x["weight_pct"])
+    is_sufficient = top_key_b["raw_score"] >= 65
+
+    if is_sufficient:
+        third_line = (
+            f"💚 클린 단지: 회원님이 가장 중시하시는 {top_key_b['key']} 인프라가 "
+            f"충분히 갖춰진 단지입니다."
+        )
+    else:
+        third_line = (
+            f"⚠️ 주의 사항: 회원님의 최우선 항목인 {top_key_b['key']} 점수가 "
+            f"{top_key_b['raw_score']:.0f}점으로 낮습니다. "
+            f"해당 인프라가 일상에 미치는 불편을 고려하여 입지를 재검토하시길 권장합니다."
+        )
+
+    # ── 어드바이저 프롬프트 (지시문 격리, 완성형 구조만 요청) ─────────────────
     advisor_prompt = (
-        f"당신은 대한민국 최고의 부동산 전략 컨설턴트입니다. "
-        f"고객을 '회원님'이라 칭하며, 과외 선생님처럼 친절하되 예리한 인사이트를 제공합니다. "
-        f"회원님의 가중치: {weights_str}. "
-        f"항목별 기여 분석: {breakdown_str}. "
-        f"{danji_name}({sgg}) 전세가율 {jeonse_ratio*100:.0f}%, 공급 안전도 {supply_score:.0f}점. "
-        f"회원님의 우선순위에 비추어 이 단지의 강점과 숨겨진 인사이트를 분석해주세요. "
-        f"반드시 다음 형식을 지켜 한국어로만 답해주세요:\n"
-        f"✅ [가장 주목할 강점을 한 문장으로]\n"
-        f"💡 [숨겨진 전략적 인사이트 — 단순 데이터가 아닌 해석 중심]\n"
-        f"📌 [한 줄 요약 인사이트 — '회원님께는 ~한 단지입니다.' 형식]"
+        "당신은 대한민국 최고의 부동산 전략 컨설턴트입니다.\n"
+        "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
+        f"[단지 데이터]\n"
+        f"단지: {danji_name}({sgg}) / 전세가율: {jeonse_ratio*100:.0f}% / 공급 안전도: {supply_score:.0f}점\n"
+        f"가중치 기여도(높은 순): {breakdown_str}\n\n"
+        "아래 3줄 형식으로만 출력하세요. 각 줄 사이에 빈 줄을 넣으세요:\n\n"
+        f"✅ 핵심 강점: {top_b['key']}의 강점을 회원님의 우선순위 관점에서 한 문장으로\n\n"
+        f"💡 전략 인사이트: 이 단지가 회원님의 생활에 미치는 긍정적 영향을 한 문장으로\n\n"
+        f"📌 한 줄 요약: 회원님께는 이 단지를 한 문장으로 총평"
     )
 
-    # ── 취향 정합성 판정 프롬프트 ────────────────────────────────────────────────
-    match_pct = min(99, max(60, int(base_weighted)))
+    # ── 정합성 판정 프롬프트 (조건 분기 Python에서 결정, LLM은 서술만) ─────────
     matching_prompt = (
-        f"당신은 부동산 전략 어드바이저입니다. 고객을 '회원님'이라 칭합니다. "
-        f"회원님의 가중치 우선순위: {weights_str}. "
-        f"특히 중시하는 항목: {top_str}. "
-        f"{danji_name}({sgg}) 리치고 생활점수 {living_score:.0f}점, "
-        f"공급 안전도 {supply_score:.0f}점. "
-        f"반드시 다음 형식을 지켜 한국어로만 답해주세요:\n"
-        f"✅ 회원님의 취향과 {match_pct}% 일치하는 단지입니다.\n"
-        f"💡 [{top_str} 항목 인프라에 대한 구체적 평가 — 충분하면 긍정 인사이트, 부족하면 아래 형식]\n"
-        f"⚠️ 전략 경고: [부족한 항목과 대안 조언] (인프라가 충분하면 이 줄 대신 '회원님이 우려하시는 인프라 부족 요소가 없는 클린 단지입니다.' 로 대체)"
+        "당신은 부동산 전략 어드바이저입니다.\n"
+        "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
+        f"[단지 데이터]\n"
+        f"단지: {danji_name}({sgg}) / 생활 점수: {living_score:.0f}점 / 공급 안전도: {supply_score:.0f}점\n"
+        f"회원님의 주요 가중치: {top_str}\n\n"
+        "아래 4줄 형식으로만 출력하세요. 각 줄 사이에 빈 줄을 넣으세요:\n\n"
+        f"✅ 종합 일치도: 회원님의 취향과 {match_pct}% 일치하는 단지입니다.\n\n"
+        f"💡 핵심 강점: {top_b['key']} 인프라가 회원님의 기대치를 충족하는 구체적 이유를 한 문장으로\n\n"
+        f"{third_line}\n\n"
+        f"📌 한 줄 요약: 이 단지에 대한 전략적 총평을 한 문장으로"
     )
 
     cur = client._cur()
