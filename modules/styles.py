@@ -434,33 +434,32 @@ def build_gauge(score: int) -> go.Figure:
     return fig
 
 
+from modules.report_engine import get_subscore
+
 def build_comparison_chart(cur: dict, tgt: dict) -> go.Figure:
     """
     현재 vs 목표 단지 5축 레이더 차트.
     fill="toself" + fillcolor 반투명으로 Radar 면적 강조.
     마우스오버 시 실제 수치 툴팁 노출.
     """
-    categories = ["공급점수", "PIR점수", "전세가율", "뉴스심리", "종합"]
-    # 툴팁에 표시할 실제 수치 (정규화 전)
-    _LABELS = [
-        ("공급 안전도", "pt",  lambda d: d["supply_score_final"]),
-        ("PIR 저평가 지수", "pt", lambda d: (1 - min(1.0, d["pir_relative_index"])) * 100),
-        ("전세가율",      "%",  lambda d: d["jeonse_ratio"] * 100),
-        ("뉴스 심리",     "pt", lambda d: d["sentiment_score"]),
-        ("종합 점수",     "pt", lambda d: d["s_alpha"]),
-    ]
+    categories = ["학군", "역세권", "슬세권", "쾌적성", "자산가치(S_alpha)"]
 
-    def _radar_vals(d: dict) -> List[float]:
-        return [
-            d["supply_score_final"],
-            (1 - min(1.0, d["pir_relative_index"])) * 100,
-            d["jeonse_ratio"] * 100,
-            (d["sentiment_score"] + 5) * 10,
-            d["s_alpha"],
-        ]
+    def _get_val(d: dict, cat: str) -> float:
+        if cat == "자산가치(S_alpha)":
+            return d["s_alpha"]
+        return get_subscore(d["danji_name"], cat, d.get("living_score") or 50, d.get("is_chobuma", False))
 
     def _customdata(d: dict) -> List[list]:
-        return [[fn(d), unit, name] for name, unit, fn in _LABELS]
+        return [
+            [_get_val(d, "학군"), "pt", "학군"],
+            [_get_val(d, "역세권"), "pt", "역세권"],
+            [_get_val(d, "슬세권"), "pt", "슬세권"],
+            [_get_val(d, "쾌적성"), "pt", "쾌적성"],
+            [d["s_alpha"], "pt", "종합 점수"],
+        ]
+
+    def _radar_vals(d: dict) -> List[float]:
+        return [_get_val(d, cat) for cat in categories]
 
     cur_vals = _radar_vals(cur)
     tgt_vals = _radar_vals(tgt)

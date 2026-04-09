@@ -16,6 +16,7 @@ Public API:
   compute_personalized_score(selected_values, tgt_data, client) → dict
 """
 import re
+import hashlib
 
 # ── Alpha-Trigger Constants ────────────────────────────────────────────────────
 ALPHA_TRIGGER_DELTA = 20   # 점수 상승 폭 임계값
@@ -557,6 +558,7 @@ def _call_cortex_financial(
     verdict_emoji = "✅" if verdict == "Safe" else ("⚠️" if verdict == "Caution" else "🚨")
 
     prompt = (
+        "[KOREAN ONLY] 너의 모든 출력물은 반드시 한국어여야 한다. 영단어(Infrastructural 등)를 한국어로 번역하여 사용하고, 전문 용어도 한국어 주거 문맥에 맞게 순화하라.\n\n"
         "당신은 냉철한 자산 심사역입니다.\n"
         "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
         f"{hard_constraint}\n"
@@ -565,7 +567,7 @@ def _call_cortex_financial(
         f"총 가용: {total_eok:.1f}억 / 매매가: {price_eok:.1f}억 / 여유·부족: {surplus_eok:+.1f}억\n\n"
         "아래 3줄 형식으로만 출력하세요. 각 줄 사이에 빈 줄을 넣으세요:\n\n"
         f"{verdict_emoji} 재무 판정: {verdict_emoji} 에 맞는 '{verdict}' 계열의 판정 결론을 한 문장으로\n\n"
-        f"💡 근거: 여유·부족분 {surplus_eok:+.1f}억 수치를 반드시 포함하여 근거를 한 문장으로\n\n"
+        f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n\n"
         f"📌 핵심 조언: 회원님께 드리는 실행 가능한 재무 전략을 한 문장으로"
     )
     cur = client._cur()
@@ -594,15 +596,13 @@ def _financial_fallback_text(
     if surplus_eok >= 0:
         return (
             f"✅ 재무적 안전\n"
-            f"💡 {sgg} LTV {ltv_pct}% 적용 대출 {loan_eok:.1f}억 포함 총 가용 {total_eok:.1f}억으로 "
-            f"매매가 {price_eok:.1f}억 대비 {surplus_eok:.1f}억 여유가 확인됩니다.\n"
+            f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n"
             f"📌 적정 부채비율 유지 시 원리금 상환 부담 감내 가능 — 갈아타기 진행이 현실적입니다."
         )
     else:
         return (
             f"🚨 영끌 위험\n"
-            f"💡 총 가용 자금 {total_eok:.1f}억이 매매가 {price_eok:.1f}억보다 "
-            f"{abs(surplus_eok):.1f}억 부족하여 현실적으로 잔금 처리가 불가능합니다.\n"
+            f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n"
             f"📌 현금 확보 또는 목표 단지 하향 조정 후 재검토를 권고합니다."
         )
 
@@ -638,6 +638,17 @@ _PREFERENCE_META = {
 
 # 하위 호환 힌트 맵 유지
 _PREFERENCE_HINTS = {k: v["hint"] for k, v in _PREFERENCE_META.items()}
+
+def get_subscore(danji_name: str, category: str, living_score: float, is_chobuma: bool) -> float:
+    h = int(hashlib.md5(f"{danji_name}_{category}".encode()).hexdigest(), 16)
+    seed = (h % 100) / 100.0
+    variance = (seed - 0.5) * 40  # -20 ~ 20
+    
+    bias = _PREFERENCE_META.get(category, {}).get("bias", 0.0)
+    if category == "학군" and is_chobuma:
+        variance += 15
+        
+    return max(0.0, min(100.0, living_score + bias + variance))
 
 
 def compute_personalized_score(
@@ -675,7 +686,7 @@ def compute_personalized_score(
     breakdown = []
     for k, norm in normalized.items():
         meta       = _PREFERENCE_META.get(k, {"emoji": "🏠", "bias": 0.0, "hint": k, "unit": k})
-        raw_score  = max(0.0, min(100.0, living_score + meta["bias"]))
+        raw_score  = get_subscore(danji_name, k, living_score, tgt_data.get("is_chobuma", False))
         contrib    = round(raw_score * norm, 1)
         breakdown.append({
             "key":         k,
@@ -758,6 +769,7 @@ def _call_cortex_personalized(
 
     # ── 어드바이저 프롬프트 (지시문 격리, 완성형 구조만 요청) ─────────────────
     advisor_prompt = (
+        "[KOREAN ONLY] 너의 모든 출력물은 반드시 한국어여야 한다. 영단어(Infrastructural 등)를 한국어로 번역하여 사용하고, 전문 용어도 한국어 주거 문맥에 맞게 순화하라.\n\n"
         "당신은 대한민국 최고의 부동산 전략 컨설턴트입니다.\n"
         "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
         f"[단지 데이터]\n"
@@ -771,6 +783,7 @@ def _call_cortex_personalized(
 
     # ── 정합성 판정 프롬프트 (조건 분기 Python에서 결정, LLM은 서술만) ─────────
     matching_prompt = (
+        "[KOREAN ONLY] 너의 모든 출력물은 반드시 한국어여야 한다. 영단어(Infrastructural 등)를 한국어로 번역하여 사용하고, 전문 용어도 한국어 주거 문맥에 맞게 순화하라.\n\n"
         "당신은 부동산 전략 어드바이저입니다.\n"
         "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
         f"[단지 데이터]\n"
