@@ -4,6 +4,7 @@ All Analyzer classes receive a SnowflakeClient instance —
 no module holds a raw connection directly.
 """
 
+from modules.data_loader import fetch_cached_query
 
 class SnowflakeClient:
     """Thin wrapper around a snowflake-connector-python connection."""
@@ -18,28 +19,25 @@ class SnowflakeClient:
 
     def fetch_danji_info(self, danji_id: str) -> dict:
         """DANJI_APT_INFO — single complex metadata row."""
-        cur = self._cur()
-        cur.execute("""
+        query = """
             SELECT BJD_CODE, SD, SGG, EMD, DANJI_ID, DANJI,
                    BUILDING_TYPE, AGES_YEAR, TOTAL_HOUSEHOLDS,
                    LIVING_SCORE, CONSTRUCTOR_RANK
             FROM DANJI_APT_INFO
             WHERE DANJI_ID = %s
             LIMIT 1
-        """, (danji_id,))
-        row = cur.fetchone()
-        cur.close()
-        if not row:
+        """
+        rows = fetch_cached_query(self.conn, query, (danji_id,))
+        if not rows:
             raise ValueError(f"DANJI_ID '{danji_id}' not found in DANJI_APT_INFO")
         cols = ["bjd_code", "sd", "sgg", "emd", "danji_id", "danji",
                 "building_type", "ages_year", "total_households",
                 "living_score", "constructor_rank"]
-        return dict(zip(cols, row))
+        return dict(zip(cols, rows[0]))
 
     def fetch_market_price(self, danji_id: str, months: int = 12) -> list:
         """DANJI_APT_RICHGO_MARKET_PRICE_M_H — recent N months."""
-        cur = self._cur()
-        cur.execute("""
+        query = """
             SELECT YYYYMMDD, MEAN_MEME_PRICE, MEAN_JEONSE_PRICE,
                    MEME_PRICE_PER_SUPPLY_PYEONG, JEONSE_PRICE_PER_SUPPLY_PYEONG,
                    MEME_CAP_PRICE
@@ -47,9 +45,8 @@ class SnowflakeClient:
             WHERE DANJI_ID = %s
             ORDER BY YYYYMMDD DESC
             LIMIT %s
-        """, (danji_id, months))
-        rows = cur.fetchall()
-        cur.close()
+        """
+        rows = fetch_cached_query(self.conn, query, (danji_id, months))
         cols = ["yyyymmdd", "mean_meme_price", "mean_jeonse_price",
                 "meme_price_per_supply_pyeong", "jeonse_price_per_supply_pyeong",
                 "meme_cap_price"]
@@ -59,31 +56,27 @@ class SnowflakeClient:
 
     def fetch_region_price(self, sgg: str, months: int = 12) -> list:
         """REGION_APT_RICHGO_MARKET_PRICE_M_H — SGG level."""
-        cur = self._cur()
-        cur.execute("""
+        query = """
             SELECT YYYYMMDD, TOTAL_HOUSEHOLDS, MEAN_MEME_PRICE, MEAN_JEONSE_PRICE
             FROM REGION_APT_RICHGO_MARKET_PRICE_M_H
             WHERE SGG = %s AND REGION_LEVEL = 'sgg'
             ORDER BY YYYYMMDD DESC
             LIMIT %s
-        """, (sgg, months))
-        rows = cur.fetchall()
-        cur.close()
+        """
+        rows = fetch_cached_query(self.conn, query, (sgg, months))
         cols = ["yyyymmdd", "total_households", "mean_meme_price", "mean_jeonse_price"]
         return [dict(zip(cols, r)) for r in rows]
 
     def fetch_region_price_sd(self, sd: str, months: int = 60) -> list:
         """REGION_APT_RICHGO_MARKET_PRICE_M_H — SD level (PIR Band fallback)."""
-        cur = self._cur()
-        cur.execute("""
+        query = """
             SELECT YYYYMMDD, TOTAL_HOUSEHOLDS, MEAN_MEME_PRICE, MEAN_JEONSE_PRICE
             FROM REGION_APT_RICHGO_MARKET_PRICE_M_H
             WHERE SD = %s AND REGION_LEVEL = 'sd'
             ORDER BY YYYYMMDD DESC
             LIMIT %s
-        """, (sd, months))
-        rows = cur.fetchall()
-        cur.close()
+        """
+        rows = fetch_cached_query(self.conn, query, (sd, months))
         cols = ["yyyymmdd", "total_households", "mean_meme_price", "mean_jeonse_price"]
         return [dict(zip(cols, r)) for r in rows]
 
@@ -109,38 +102,31 @@ class SnowflakeClient:
 
         Returns: list[str] — CORTEX.SENTIMENT에 전달할 텍스트 목록 (최대 20건)
         """
-        cur = self._cur()
+    def fetch_news_texts(
+        self,
+        danji_name: str,
+        sgg: str,
+        sd: str,
+        ttl_hours: int = 168,
+    ) -> list:
         results = []
         try:
             # 1차: 단지명 직접 LIKE 매칭
-            cur.execute(
-                """
+            query1 = """
                 SELECT TITLE
                 FROM RICHGO_KR.STAGING.REAL_ESTATE_RSS_FEEDS
                 WHERE PUBLISHED_AT >= DATEADD('hour', %s, CURRENT_TIMESTAMP())
                   AND TITLE LIKE %s
                 ORDER BY PUBLISHED_AT DESC
                 LIMIT 20
-                """,
-                (-ttl_hours, f"%{danji_name}%"),
-            )
-            results = [r[0] for r in cur.fetchall() if r[0]]
+            """
+            rows = fetch_cached_query(self.conn, query1, (-ttl_hours, f"%{danji_name}%"))
+            results = [r[0] for r in rows if r[0]]
 
             # 2차 Fallback: SGG(구) LIKE 매칭
             if len(results) < 3:
-                cur.execute(
-                    """
-                    SELECT TITLE
-                    FROM RICHGO_KR.STAGING.REAL_ESTATE_RSS_FEEDS
-                    WHERE PUBLISHED_AT >= DATEADD('hour', %s, CURRENT_TIMESTAMP())
-                      AND TITLE LIKE %s
-                    ORDER BY PUBLISHED_AT DESC
-                    LIMIT 20
-                    """,
-                    (-ttl_hours, f"%{sgg}%"),
-                )
-                sgg_rows = [r[0] for r in cur.fetchall() if r[0]]
-                # 중복 제거 후 병합
+                rows = fetch_cached_query(self.conn, query1, (-ttl_hours, f"%{sgg}%"))
+                sgg_rows = [r[0] for r in rows if r[0]]
                 seen = set(results)
                 for t in sgg_rows:
                     if t not in seen:
@@ -149,17 +135,15 @@ class SnowflakeClient:
 
             # 3차 Fallback: SD(시/도) 전체 최신 뉴스
             if len(results) < 3:
-                cur.execute(
-                    """
+                query2 = """
                     SELECT TITLE
                     FROM RICHGO_KR.STAGING.REAL_ESTATE_RSS_FEEDS
                     WHERE PUBLISHED_AT >= DATEADD('hour', %s, CURRENT_TIMESTAMP())
                     ORDER BY PUBLISHED_AT DESC
                     LIMIT 10
-                    """,
-                    (-ttl_hours,),
-                )
-                sd_rows = [r[0] for r in cur.fetchall() if r[0]]
+                """
+                rows = fetch_cached_query(self.conn, query2, (-ttl_hours,))
+                sd_rows = [r[0] for r in rows if r[0]]
                 seen = set(results)
                 for t in sd_rows:
                     if t not in seen:
@@ -170,8 +154,6 @@ class SnowflakeClient:
             # 테이블/컬럼 불일치 시 빈 리스트 반환 — 파이프라인 보호
             print(f"🚨 [DEBUG] fetch_news_texts EXCEPTION: {type(e).__name__}: {e}")
             results = []
-        finally:
-            cur.close()
 
         return results[:20]  # Cortex 비용 관리: 최대 20건
 
@@ -184,9 +166,8 @@ class SnowflakeClient:
             {"recent_avg": float, "prior_avg": float, "momentum_pct": float}
             데이터 없으면 {"recent_avg": 0, "prior_avg": 0, "momentum_pct": 0.0}
         """
-        cur = self._cur()
         try:
-            cur.execute("""
+            query = """
                 SELECT
                     AVG(CASE WHEN idx <= 3 THEN MEAN_MEME_PRICE END) AS recent_avg,
                     AVG(CASE WHEN idx > 3 AND idx <= 6 THEN MEAN_MEME_PRICE END) AS prior_avg
@@ -197,13 +178,12 @@ class SnowflakeClient:
                     WHERE DANJI_ID = %s
                       AND MEAN_MEME_PRICE IS NOT NULL
                 )
-            """, (danji_id,))
-            row = cur.fetchone()
+            """
+            rows = fetch_cached_query(self.conn, query, (danji_id,))
+            row = rows[0] if rows else None
         except Exception as e:
             print(f"⚠ [DEBUG] fetch_price_momentum error: {e}")
             row = None
-        finally:
-            cur.close()
 
         if not row or row[0] is None or row[1] is None or row[1] == 0:
             print(f"🔍 [DATA TRACE] fetch_price_momentum | danji_id={danji_id}"
@@ -222,9 +202,8 @@ class SnowflakeClient:
         최근 N개월 인구 순이동 평균 (양수=유입, 음수=유출).
         Proxy Sentiment 보정에 사용.
         """
-        cur = self._cur()
         try:
-            cur.execute("""
+            query = """
                 SELECT AVG(POPULATION)
                 FROM (
                     SELECT POPULATION
@@ -235,13 +214,12 @@ class SnowflakeClient:
                     ORDER BY YYYYMMDD DESC
                     LIMIT %s
                 )
-            """, (sgg, months))
-            row = cur.fetchone()
+            """
+            rows = fetch_cached_query(self.conn, query, (sgg, months))
+            row = rows[0] if rows else None
         except Exception as e:
             print(f"⚠ [DEBUG] fetch_population_net error: {e}")
             row = None
-        finally:
-            cur.close()
 
         if not row or row[0] is None:
             print(f"🔍 [DATA TRACE] fetch_population_net | sgg={sgg}"
@@ -263,14 +241,12 @@ class SnowflakeClient:
 
     def fetch_population_movement(self, sgg: str, months: int = 36) -> list:
         """REGION_POPULATION_MOVEMENT — SGG net migration."""
-        cur = self._cur()
-        cur.execute("""
+        query = """
             SELECT YYYYMMDD, POPULATION
             FROM REGION_POPULATION_MOVEMENT
             WHERE SGG = %s AND MOVEMENT_TYPE = '순이동' AND REGION_LEVEL = 'sgg'
             ORDER BY YYYYMMDD DESC
             LIMIT %s
-        """, (sgg, months))
-        rows = cur.fetchall()
-        cur.close()
+        """
+        rows = fetch_cached_query(self.conn, query, (sgg, months))
         return [{"yyyymmdd": r[0], "population": r[1]} for r in rows]

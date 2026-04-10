@@ -43,6 +43,30 @@ def get_engine():
         return None
 
 
+# ── DB Cache Wrapper (Operation Warp Speed) ────────────────────────────────────
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_cached_query(_conn, query: str, params: tuple = None) -> list:
+    """
+    Snowflake 쿼리 결과를 24시간 캐싱(I/O 최적화).
+    """
+    import time
+    t0 = time.time()
+    try:
+        cur = _conn.cursor()
+        if params:
+            cur.execute(query, params)
+        else:
+            cur.execute(query)
+        rows = cur.fetchall()
+        cur.close()
+        t1 = time.time()
+        print(f"⚡ [Warp Speed Profiler] DB Cache MISS | SQL Exec | latency: {int((t1-t0)*1000)}ms")
+        return rows
+    except Exception as e:
+        print(f"⚠ [Warp Speed Profiler] DB Query Error | {e}")
+        return []
+
 # ── Danji List Loader ──────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=3600, show_spinner=False)

@@ -510,11 +510,11 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         )
 
     # ════════════════════════════════════════════════════════════════════════════
-    # MISSION 1: 재무 실행 가능성 (Financial Feasibility)
+    # MISSION: Cortex AI 통합 분석 (Warp Speed)
     # ════════════════════════════════════════════════════════════════════════════
     st.markdown(
         f"<div style='font-size:20px;font-weight:800;color:#E8EAF0;margin:28px 0 12px 0;'>"
-        f"재무 실행 가능성 분석</div>",
+        f"🚀 Cortex AI 종합 분석 엔진</div>",
         unsafe_allow_html=True,
     )
 
@@ -522,183 +522,166 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
     monthly_income_man  = int(st.session_state.get("monthly_income_man", 500))
     monthly_expense_man = int(st.session_state.get("monthly_expense_man", 200))
     loan_interest_rate  = float(st.session_state.get("loan_interest_rate", 4.0))
+    lifestyle_weights   = st.session_state.get("lifestyle_weights", {"학군": 3, "역세권": 3, "슬세권": 3, "쾌적성": 3})
 
     engine_obj     = st.session_state.get("_engine")
     sf_client      = engine_obj._client if engine_obj else None
 
-    col_fin_btn, col_fin_hint = st.columns([2, 5])
-    with col_fin_btn:
-        run_financial = st.button(
-            "Cortex AI 재무 판독 실행",
-            key="btn_financial",
+    # ── 통합 실행 버튼 (Warp Speed) ──
+    col_run_btn, col_run_hint = st.columns([3, 5])
+    with col_run_btn:
+        run_analysis = st.button(
+            "🚀 Cortex AI 통합 분석 실행",
+            key="btn_run_analysis",
             use_container_width=True,
+            type="primary"
         )
-    with col_fin_hint:
+    with col_run_hint:
+        _tw = sum(lifestyle_weights.values()) or 1
+        _wt_preview = " · ".join(f"<b style='color:{MINT};'>{k}</b>" for k in lifestyle_weights.keys())
         st.markdown(
             f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
-            f"초개인화 재무 프로필 기반 통합 분석 실행 "
-            f"— 사이드바에서 값을 수정 후 재실행하세요.</div>",
+            f"재무 판독 및 가치 분석 병렬 실행 (소득/지출 및 {_wt_preview} 가중치 기반)</div>",
             unsafe_allow_html=True,
         )
 
-    if run_financial:
-        # ── 단계별 게임형 로딩 시스템 ─────────────────────────────────────────
-        prog   = st.progress(0)
-        status = st.empty()
+    # ── 레이아웃 프레임 ──
+    st.markdown(
+        f"<div style='font-size:16px;font-weight:700;color:#E8EAF0;margin:20px 0 10px 0;'>"
+        f"MISSION 1: 재무 실행 가능성 분석</div>",
+        unsafe_allow_html=True,
+    )
+    fin_placeholder = st.empty()
 
-        status.info("📡 **[1/4]** Snowflake 실거래 DB에서 해당 단지의 최신 시세 인출 중...")
-        prog.progress(25, text="25% — 시세 데이터 인출")
-        time.sleep(0.35)
+    st.markdown(
+        f"<div style='font-size:16px;font-weight:700;color:#E8EAF0;margin:28px 0 10px 0;'>"
+        f"MISSION 2: 나만의 맞춤 가치 점수</div>",
+        unsafe_allow_html=True,
+    )
+    per_placeholder = st.empty()
 
-        status.info("💸 **[2/4]** 지역별 주택담보대출 규제(LTV) 및 갭 투자 산식 적용 중...")
-        prog.progress(50, text="50% — LTV 규제 적용")
-        time.sleep(0.3)
+    if run_analysis:
+        import concurrent.futures
+        import time
+        t_start = time.time()
 
-        status.info("🧠 **[3/4]** Cortex AI가 회원님의 자산 데이터를 기반으로 재무 판독 중...")
-        prog.progress(75, text="75% — Cortex AI 추론 중")
-
-        fin = compute_financial_feasibility(
-            liquid_asset_eok, monthly_income_man, monthly_expense_man, loan_interest_rate, tgt_data, sf_client
+        # Skeleton UX 적용
+        fin_placeholder.markdown(
+            f"<div class='card' style='text-align:center;padding:40px;border-color:{BORDER};'>"
+            f"<div style='color:#B0C8D8;font-size:16px;font-weight:bold;margin-bottom:10px;'>⏳ AI 재무 분석 중...</div>"
+            f"<div style='color:#445566;font-size:13px;'>초개인화 재무 데이터를 바탕으로 상환 능력을 시뮬레이션하고 있습니다.</div></div>",
+            unsafe_allow_html=True,
         )
-        st.session_state["financial_result"] = fin
+        per_placeholder.markdown(
+            f"<div class='card' style='text-align:center;padding:40px;border-color:{BORDER};'>"
+            f"<div style='color:#B0C8D8;font-size:16px;font-weight:bold;margin-bottom:10px;'>⏳ AI 가치 분석 중...</div>"
+            f"<div style='color:#445566;font-size:13px;'>우선순위 가중치를 바탕으로 환경 가치 정합성을 추론하고 있습니다.</div></div>",
+            unsafe_allow_html=True,
+        )
 
-        prog.progress(100, text="100% — 완료")
-        status.success("🏆 **[4/4]** 맞춤형 재무 전략 리포트가 완성되었습니다!")
-        time.sleep(0.6)
-        prog.empty()
-        status.empty()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            future_fin = executor.submit(
+                compute_financial_feasibility,
+                liquid_asset_eok, monthly_income_man, monthly_expense_man, loan_interest_rate, tgt_data, sf_client
+            )
+            future_per = executor.submit(
+                compute_personalized_score,
+                lifestyle_weights, tgt_data, sf_client
+            )
+
+            with st.status("🚀 [Warp Speed] 분석 엔진 병렬 가동 중...", expanded=True) as status:
+                status.write("📡 Thread 1: Cortex AI 재무 판독 추론 중...")
+                status.write("🧠 Thread 2: Cortex AI 환경 가치 분석 중...")
+                
+                fin = future_fin.result()
+                per = future_per.result()
+                
+                t_end = time.time()
+                elapsed_ms = int((t_end - t_start) * 1000)
+                status.update(label=f"✅ 병렬 분석 완료! (소요 시간: {elapsed_ms}ms)", state="complete", expanded=False)
+                print(f"⚡ [Warp Speed Profiler] AI Parallel Execution | latency: {elapsed_ms}ms", flush=True)
+
+        st.session_state["financial_result"] = fin
+        st.session_state["personal_result"]  = per
+        time.sleep(0.3)
 
     fin = st.session_state.get("financial_result")
     if fin:
-        vc   = fin["verdict_color"]
-        vl   = fin["verdict_label"]
-        col_fin1, col_fin2 = st.columns([1, 2])
-        with col_fin1:
-            dsr = fin['dsr']
-            pir = fin['personalized_pir']
-            pir_color = "#FF8C00" if pir > 20 else "#00FFAA"
-            dsr_pct = int(dsr * 100)
-            dsr_color = "#FF4B4B" if dsr_pct > 40 else "#00FFAA"
-            
-            st.markdown(
-                f"<div class='card' style='border-color:{vc}44;text-align:center;padding:16px;'>"
-                f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>재무 판정 배지</div>"
-                f"<div style='font-size:26px;font-weight:900;color:{vc};"
-                f"text-shadow:0 0 16px {vc};margin-bottom:12px;'>{vl}</div>"
-                f"<div style='font-size:11px;color:#8892A4;line-height:1.9;text-align:left;'>"
-                f"매매가: <b style='color:#E8EAF0;'>{fin['price_eok']:.1f}억</b><br>"
-                f"실투자(Gap): <b style='color:{vc};'>{fin['gap_eok']:.1f}억</b><br>"
-                f"총 가용자금: <b style='color:#E8EAF0;'>{fin['total_eok']:.1f}억</b><br>"
-                f"여유/부족: <b style='color:{vc};'>{fin['surplus_eok']:+.1f}억</b><hr style='margin:8px 0;border-color:#1E2329;'>"
-                f"맞춤형 PIR: <b style='color:{pir_color};'>{pir}년</b><br>"
-                f"생존예비: <b style='color:#E8EAF0;'>{fin['survival_months']}개월</b>"
-                f"</div>"
-                f"<div style='margin-top:12px;text-align:left;'>"
-                f"  <div style='display:flex;justify-content:space-between;font-size:10px;color:#445566;margin-bottom:4px;'>"
-                f"      <span>DSR: {dsr_pct}% </span>"
-                f"      <span>월 {int(fin['monthly_loan_payment'])}만원 상환</span>"
-                f"  </div>"
-                f"  <div style='width:100%;background:#1E2329;border-radius:4px;height:6px;overflow:hidden;'>"
-                f"    <div style='width:{min(dsr_pct, 100)}%;background:{dsr_color};height:100%;'></div>"
-                f"  </div>"
-                f"</div>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with col_fin2:
-            # Cortex AI 3줄 분석 텍스트
-            lines = [l.strip() for l in fin["cortex_text"].split("\n") if l.strip()]
-            lines_html = "".join(
-                f"<div style='margin-bottom:8px;padding:10px 14px;"
-                f"background:#0D1117;border-left:3px solid {vc}44;"
-                f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
-                f"{line}</div>"
-                for line in lines
-            )
-            st.markdown(
-                f"<div class='card' style='border-color:{vc}33;'>"
-                f"<div style='font-size:13px;font-weight:700;color:{vc};"
-                f"margin-bottom:12px;'>"
-                f"Snowflake Cortex AI 재무 판독 결과</div>"
-                f"{lines_html}</div>",
-                unsafe_allow_html=True,
-            )
+        with fin_placeholder.container():
+            vc   = fin["verdict_color"]
+            vl   = fin["verdict_label"]
+            col_fin1, col_fin2 = st.columns([1, 2])
+            with col_fin1:
+                dsr = fin['dsr']
+                pir = fin['personalized_pir']
+                pir_color = "#FF8C00" if pir > 20 else "#00FFAA"
+                dsr_pct = int(dsr * 100)
+                dsr_color = "#FF4B4B" if dsr_pct > 40 else "#00FFAA"
+                
+                st.markdown(
+                    f"<div class='card' style='border-color:{vc}44;text-align:center;padding:16px;'>"
+                    f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>재무 판정 배지</div>"
+                    f"<div style='font-size:26px;font-weight:900;color:{vc};"
+                    f"text-shadow:0 0 16px {vc};margin-bottom:12px;'>{vl}</div>"
+                    f"<div style='font-size:11px;color:#8892A4;line-height:1.9;text-align:left;'>"
+                    f"매매가: <b style='color:#E8EAF0;'>{fin['price_eok']:.1f}억</b><br>"
+                    f"실투자(Gap): <b style='color:{vc};'>{fin['gap_eok']:.1f}억</b><br>"
+                    f"총 가용자금: <b style='color:#E8EAF0;'>{fin['total_eok']:.1f}억</b><br>"
+                    f"여유/부족: <b style='color:{vc};'>{fin['surplus_eok']:+.1f}억</b><hr style='margin:8px 0;border-color:#1E2329;'>"
+                    f"맞춤형 PIR: <b style='color:{pir_color};'>{pir}년</b><br>"
+                    f"생존예비: <b style='color:#E8EAF0;'>{fin['survival_months']}개월</b>"
+                    f"</div>"
+                    f"<div style='margin-top:12px;text-align:left;'>"
+                    f"  <div style='display:flex;justify-content:space-between;font-size:10px;color:#445566;margin-bottom:4px;'>"
+                    f"      <span>DSR: {dsr_pct}% </span>"
+                    f"      <span>월 {int(fin['monthly_loan_payment'])}만원 상환</span>"
+                    f"  </div>"
+                    f"  <div style='width:100%;background:#1E2329;border-radius:4px;height:6px;overflow:hidden;'>"
+                    f"    <div style='width:{min(dsr_pct, 100)}%;background:{dsr_color};height:100%;'></div>"
+                    f"  </div>"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+            with col_fin2:
+                # Cortex AI 3줄 분석 텍스트
+                lines = [l.strip() for l in fin["cortex_text"].split("\n") if l.strip()]
+                lines_html = "".join(
+                    f"<div style='margin-bottom:8px;padding:10px 14px;"
+                    f"background:#0D1117;border-left:3px solid {vc}44;"
+                    f"border-radius:0 6px 6px 0;font-size:13px;color:#C8D0E0;'>"
+                    f"{line}</div>"
+                    for line in lines
+                )
+                st.markdown(
+                    f"<div class='card' style='border-color:{vc}33;'>"
+                    f"<div style='font-size:13px;font-weight:700;color:{vc};"
+                    f"margin-bottom:12px;'>"
+                    f"Snowflake Cortex AI 재무 판독 결과</div>"
+                    f"{lines_html}</div>",
+                    unsafe_allow_html=True,
+                )
     else:
-        st.markdown(
-            f"<div class='card' style='text-align:center;padding:20px;"
-            f"border-color:{BORDER};'>"
+        fin_placeholder.markdown(
+            f"<div class='card' style='text-align:center;padding:20px;border-color:{BORDER};'>"
             f"<span style='color:#445566;font-size:13px;'>"
-            f"위의 버튼을 눌러 Cortex AI 재무 판독을 실행하세요.</span></div>",
+            f"상단의 [Cortex AI 통합 분석 실행] 버튼을 눌러주세요.</span></div>",
             unsafe_allow_html=True,
         )
-
-    # ════════════════════════════════════════════════════════════════════════════
-    # MISSION 2: 나만의 맞춤 가치 (Personalized Value Score)
-    # ════════════════════════════════════════════════════════════════════════════
-    st.markdown(
-        f"<div style='font-size:20px;font-weight:800;color:#E8EAF0;margin:28px 0 12px 0;'>"
-        f"나만의 맞춤 가치 점수</div>",
-        unsafe_allow_html=True,
-    )
-
-    lifestyle_weights = st.session_state.get("lifestyle_weights", {"학군": 3, "역세권": 3, "슬세권": 3, "쾌적성": 3})
-    _tw = sum(lifestyle_weights.values()) or 1
-    _wt_preview = " · ".join(
-        f"<b style='color:{MINT};'>{k}</b> {v/_tw*100:.0f}%"
-        for k, v in lifestyle_weights.items()
-    )
-
-    col_per_btn, col_per_hint = st.columns([2, 5])
-    with col_per_btn:
-        run_personal = st.button(
-            "Cortex AI 맞춤 점수 산출",
-            key="btn_personal",
-            use_container_width=True,
-        )
-    with col_per_hint:
-        st.markdown(
-            f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
-            f"가중 반영 비중 — {_wt_preview}</div>",
-            unsafe_allow_html=True,
-        )
-
-    # ── 단계별 게임형 로딩 시스템 ────────────────────────────────────────────
-    if run_personal:
-        prog_p   = st.progress(0)
-        status_p = st.empty()
-
-        status_p.info("🧬 **[1/4]** 회원님의 4대 주거 가치 가중치 로딩 중...")
-        prog_p.progress(25, text="25% — 가중치 로딩")
-        time.sleep(0.35)
-
-        status_p.info("🛰️ **[2/4]** Snowflake 데이터베이스에서 인프라 점수 추출 중...")
-        prog_p.progress(50, text="50% — 인프라 점수 추출")
-        time.sleep(0.3)
-
-        status_p.info("🧠 **[3/4]** Cortex AI가 개인화 리포트 및 취향 정합성 분석 중...")
-        prog_p.progress(75, text="75% — Cortex AI 추론 중")
-
-        per = compute_personalized_score(lifestyle_weights, tgt_data, sf_client)
-        st.session_state["personal_result"] = per
-
-        prog_p.progress(100, text="100% — 완료")
-        status_p.success("✅ **[4/4]** 분석 완료! 맞춤 가치 리포트를 확인하세요.")
-        time.sleep(0.6)
-        prog_p.empty()
-        status_p.empty()
 
     per = st.session_state.get("personal_result")
     if per:
-        pscore  = per["personal_score"]
-        pcolor  = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
-        pgrade  = "최적합" if pscore >= 75 else ("적합" if pscore >= 50 else "재검토")
-        pglyph  = "✅" if pscore >= 75 else ("⚠️" if pscore >= 50 else "🚨")
-        breakdown       = per.get("breakdown", [])
-        advisor_comment = per.get("advisor_comment", "")
-        matching_verdict= per.get("matching_verdict", "")
-        strongest_asset = per.get("strongest_asset", "")
-        _weights_display= per.get("weights", {})
-        _tw2            = sum(_weights_display.values()) or 1
+        with per_placeholder.container():
+            pscore  = per["personal_score"]
+            pcolor  = MINT if pscore >= 75 else (YELLOW_NEO if pscore >= 50 else RED_NEO)
+            pgrade  = "최적합" if pscore >= 75 else ("적합" if pscore >= 50 else "재검토")
+            pglyph  = "✅" if pscore >= 75 else ("⚠️" if pscore >= 50 else "🚨")
+            breakdown       = per.get("breakdown", [])
+            advisor_comment = per.get("advisor_comment", "")
+            matching_verdict= per.get("matching_verdict", "")
+            strongest_asset = per.get("strongest_asset", "")
+            _weights_display= per.get("weights", {})
+            _tw2            = sum(_weights_display.values()) or 1
 
         # ── 상단: 종합 점수 카드 (1) + 어드바이저 리포트 (1.5) ──────────────
         col_score, col_report = st.columns([1, 1.5])
@@ -838,11 +821,10 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
                 unsafe_allow_html=True,
             )
     else:
-        st.markdown(
-            f"<div class='card' style='text-align:center;padding:20px;"
-            f"border-color:{BORDER};'>"
+        per_placeholder.markdown(
+            f"<div class='card' style='text-align:center;padding:20px;border-color:{BORDER};'>"
             f"<span style='color:#445566;font-size:13px;'>"
-            f"위의 버튼을 눌러 Cortex AI 맞춤 점수를 산출하세요.</span></div>",
+            f"상단의 [Cortex AI 통합 분석 실행] 버튼을 눌러주세요.</span></div>",
             unsafe_allow_html=True,
         )
 
