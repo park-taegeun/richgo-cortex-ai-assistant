@@ -148,24 +148,52 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
 
         st.markdown("---")
 
-        # ── MISSION 1: 보유 현금 입력 ────────────────────────────────────────
+        # ── MISSION 1: 나의 재무 프로필 입력 ────────────────────────────────────────
         st.markdown(
             f"<div class='section-header' style='margin-top:4px;' "
-            f"title='갈아타기 실행을 위한 보유 현금(억 단위)을 입력하세요.'>"
-            f"💰 보유 현금 (억 단위)</div>",
+            f"title='갈아타기 실행을 위한 초개인화 재무 프로필을 입력하세요.'>"
+            f"💰 나의 재무 프로필</div>",
             unsafe_allow_html=True,
         )
-        cash_eok = st.number_input(
-            label="보유 현금",
-            min_value=0.0, max_value=100.0, step=0.5,
-            value=float(st.session_state.get("cash_eok", 5.0)),
-            format="%.1f",
-            label_visibility="collapsed",
-        )
-        st.session_state["cash_eok"] = cash_eok
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>금융 자산 (비상금, 억)</div>", unsafe_allow_html=True)
+            liquid_asset_eok = st.number_input(
+                "금융 자산", min_value=0.0, max_value=100.0, step=0.5,
+                value=float(st.session_state.get("liquid_asset_eok", 5.0)),
+                format="%.1f", label_visibility="collapsed"
+            )
+            st.session_state["liquid_asset_eok"] = liquid_asset_eok
+
+            st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 세후 소득 (만원)</div>", unsafe_allow_html=True)
+            monthly_income_man = st.number_input(
+                "월 소득", min_value=0, max_value=20000, step=50,
+                value=int(st.session_state.get("monthly_income_man", 500)),
+                label_visibility="collapsed"
+            )
+            st.session_state["monthly_income_man"] = monthly_income_man
+
+        with col2:
+            st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>대출 금리 (%)</div>", unsafe_allow_html=True)
+            loan_interest_rate = st.number_input(
+                "대출 금리", min_value=1.0, max_value=15.0, step=0.1,
+                value=float(st.session_state.get("loan_interest_rate", 4.0)),
+                format="%.1f", label_visibility="collapsed"
+            )
+            st.session_state["loan_interest_rate"] = loan_interest_rate
+
+            st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 고정 지출 (만원)</div>", unsafe_allow_html=True)
+            monthly_expense_man = st.number_input(
+                "월 지출", min_value=0, max_value=20000, step=50,
+                value=int(st.session_state.get("monthly_expense_man", 200)),
+                label_visibility="collapsed"
+            )
+            st.session_state["monthly_expense_man"] = monthly_expense_man
+
         st.markdown(
-            f"<div style='font-size:11px;color:#445566;margin-top:-8px;margin-bottom:8px;'>"
-            f"강남3구·용산 LTV 50% / 그 외 LTV 70% 자동 적용</div>",
+            f"<div style='font-size:11px;color:#445566;margin-top:8px;margin-bottom:8px;line-height:1.6;'>"
+            f"강남3구·용산 LTV 50% / 그 외 LTV 70% 자동 적용<br>"
+            f"대출 원리금 40년 균등 상환 시뮬레이션 적용</div>",
             unsafe_allow_html=True,
         )
 
@@ -475,7 +503,11 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         unsafe_allow_html=True,
     )
 
-    cash_eok       = float(st.session_state.get("cash_eok", 5.0))
+    liquid_asset_eok    = float(st.session_state.get("liquid_asset_eok", 5.0))
+    monthly_income_man  = int(st.session_state.get("monthly_income_man", 500))
+    monthly_expense_man = int(st.session_state.get("monthly_expense_man", 200))
+    loan_interest_rate  = float(st.session_state.get("loan_interest_rate", 4.0))
+
     engine_obj     = st.session_state.get("_engine")
     sf_client      = engine_obj._client if engine_obj else None
 
@@ -489,8 +521,8 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
     with col_fin_hint:
         st.markdown(
             f"<div style='padding-top:10px;font-size:12px;color:#445566;'>"
-            f"보유 현금 <b style='color:#E8EAF0;'>{cash_eok:.1f}억</b> 기준 "
-            f"— 사이드바에서 현금을 수정 후 재실행하세요.</div>",
+            f"초개인화 재무 프로필 기반 통합 분석 실행 "
+            f"— 사이드바에서 값을 수정 후 재실행하세요.</div>",
             unsafe_allow_html=True,
         )
 
@@ -510,7 +542,9 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         status.info("🧠 **[3/4]** Cortex AI가 회원님의 자산 데이터를 기반으로 재무 판독 중...")
         prog.progress(75, text="75% — Cortex AI 추론 중")
 
-        fin = compute_financial_feasibility(cash_eok, tgt_data, sf_client)
+        fin = compute_financial_feasibility(
+            liquid_asset_eok, monthly_income_man, monthly_expense_man, loan_interest_rate, tgt_data, sf_client
+        )
         st.session_state["financial_result"] = fin
 
         prog.progress(100, text="100% — 완료")
@@ -525,19 +559,35 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
         vl   = fin["verdict_label"]
         col_fin1, col_fin2 = st.columns([1, 2])
         with col_fin1:
+            dsr = fin['dsr']
+            pir = fin['personalized_pir']
+            pir_color = "#FF8C00" if pir > 20 else "#00FFAA"
+            dsr_pct = int(dsr * 100)
+            dsr_color = "#FF4B4B" if dsr_pct > 40 else "#00FFAA"
+            
             st.markdown(
-                f"<div class='card' style='border-color:{vc}44;text-align:center;'>"
+                f"<div class='card' style='border-color:{vc}44;text-align:center;padding:16px;'>"
                 f"<div style='font-size:12px;color:#445566;margin-bottom:6px;'>재무 판정 배지</div>"
                 f"<div style='font-size:26px;font-weight:900;color:{vc};"
-                f"text-shadow:0 0 16px {vc};margin-bottom:10px;'>{vl}</div>"
-                f"<div style='font-size:11px;color:#445566;line-height:1.8;'>"
+                f"text-shadow:0 0 16px {vc};margin-bottom:12px;'>{vl}</div>"
+                f"<div style='font-size:11px;color:#8892A4;line-height:1.9;text-align:left;'>"
                 f"매매가: <b style='color:#E8EAF0;'>{fin['price_eok']:.1f}억</b><br>"
-                f"전세가: <b style='color:#667788;'>{fin['jeonse_eok']:.1f}억</b><br>"
-                f"실투자금(Gap): <b style='color:{vc};'>{fin['gap_eok']:.1f}억</b><br>"
-                f"LTV {int(fin['ltv_rate']*100)}% 대출 한도: <b>{fin['loan_eok']:.1f}억</b><br>"
-                f"총 가용 자금: <b style='color:#E8EAF0;'>{fin['total_eok']:.1f}억</b><br>"
-                f"여유/부족: <b style='color:{vc};'>{fin['surplus_eok']:+.1f}억</b>"
-                f"</div></div>",
+                f"실투자(Gap): <b style='color:{vc};'>{fin['gap_eok']:.1f}억</b><br>"
+                f"총 가용자금: <b style='color:#E8EAF0;'>{fin['total_eok']:.1f}억</b><br>"
+                f"여유/부족: <b style='color:{vc};'>{fin['surplus_eok']:+.1f}억</b><hr style='margin:8px 0;border-color:#1E2329;'>"
+                f"맞춤형 PIR: <b style='color:{pir_color};'>{pir}년</b><br>"
+                f"생존예비: <b style='color:#E8EAF0;'>{fin['survival_months']}개월</b>"
+                f"</div>"
+                f"<div style='margin-top:12px;text-align:left;'>"
+                f"  <div style='display:flex;justify-content:space-between;font-size:10px;color:#445566;margin-bottom:4px;'>"
+                f"      <span>DSR: {dsr_pct}% </span>"
+                f"      <span>월 {int(fin['monthly_loan_payment'])}만원 상환</span>"
+                f"  </div>"
+                f"  <div style='width:100%;background:#1E2329;border-radius:4px;height:6px;overflow:hidden;'>"
+                f"    <div style='width:{min(dsr_pct, 100)}%;background:{dsr_color};height:100%;'></div>"
+                f"  </div>"
+                f"</div>"
+                f"</div>",
                 unsafe_allow_html=True,
             )
         with col_fin2:

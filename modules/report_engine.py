@@ -466,19 +466,19 @@ def generate_detailed_logic(cur: dict, tgt: dict) -> list:
 
 # ── Financial Feasibility Engine ───────────────────────────────────────────────
 
-def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) -> dict:
+def compute_financial_feasibility(
+    liquid_asset_eok: float, 
+    monthly_income_man: int, 
+    monthly_expense_man: int, 
+    loan_interest_rate: float, 
+    tgt_data: dict, 
+    client=None
+) -> dict:
     """
-    자금 계획 분석 — 갈아타기 재무 실행 가능성 판독.
-
-    Args:
-        cash_eok: 보유 현금 (억 단위, float)
-        tgt_data: 목표 단지 analyze() 결과 dict
-        client:   SnowflakeClient instance (Cortex AI 호출용; None 시 Fallback)
-
+    자금 계획 분석 — 갈아타기 및 초개인화 재무 실행 가능성 판독.
     Returns:
         price_eok, jeonse_eok, gap_eok, loan_eok, total_eok, surplus_eok,
-        ltv_rate, verdict ("Safe"/"Caution"/"Risk"),
-        verdict_label, verdict_color, cortex_text
+        personalized_pir, dsr, survival_months, monthly_loan_payment, ...
     """
     price_eok  = round(tgt_data["latest_meme_price_man_won"]  / 10000, 2)
     jeonse_eok = round(tgt_data["latest_jeonse_price_man_won"] / 10000, 2)
@@ -487,16 +487,41 @@ def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) 
 
     gap_eok     = round(price_eok - jeonse_eok, 2)
     loan_eok    = round(price_eok * ltv_rate,   2)
-    total_eok   = round(cash_eok  + loan_eok,   2)
+    total_eok   = round(liquid_asset_eok  + loan_eok,   2)
     surplus_eok = round(total_eok - price_eok,  2)
 
+    # 1. Personalized PIR
+    if monthly_income_man > 0:
+        personalized_pir = round(tgt_data["latest_meme_price_man_won"] / (monthly_income_man * 12), 1)
+    else:
+        personalized_pir = 999.0
+
+    # 2. DSR 시뮬레이션 (40년 원리금 균등 상환)
+    loan_manwon = loan_eok * 10000
+    monthly_rate = (loan_interest_rate / 100) / 12
+    months = 40 * 12
+    if loan_manwon > 0 and monthly_rate > 0:
+        monthly_loan_payment = loan_manwon * (monthly_rate * (1 + monthly_rate)**months) / ((1 + monthly_rate)**months - 1)
+    else:
+        monthly_loan_payment = 0.0
+
+    dsr = round(monthly_loan_payment / max(monthly_income_man, 1), 3)
+
+    # 3. Survival Runway (생존 가능 개월 수)
+    monthly_total_expense = monthly_expense_man + monthly_loan_payment
+    if monthly_total_expense > 0:
+        survival_months = round((liquid_asset_eok * 10000) / monthly_total_expense, 1)
+    else:
+        survival_months = 999.0
+
     # ── 수치 기반 판정 (Logic Hardening) ─────────────────────────────────────
-    # surplus_eok < 0 → LTV 수치 무관하게 위험/불가로 고정
     surplus_ratio = surplus_eok / max(price_eok, 1)
     if surplus_eok < 0 and surplus_ratio < -0.15:
         verdict, verdict_label, verdict_color = "Impossible", "진입 불가",   _RED_NEO
-    elif surplus_eok < 0:
+    elif surplus_eok < 0 or dsr >= 0.50:
         verdict, verdict_label, verdict_color = "Risk",       "영끌 위험",   _RED_NEO
+    elif dsr >= 0.40:
+        verdict, verdict_label, verdict_color = "Caution",    "적자 경고",   _YELLOW_NEO
     elif surplus_ratio >= 0.10:
         verdict, verdict_label, verdict_color = "Safe",       "재무적 안전", _MINT
     elif surplus_ratio >= 0:
@@ -505,9 +530,8 @@ def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) 
         verdict, verdict_label, verdict_color = "Risk",       "영끌 위험",   _RED_NEO
 
     cortex_text = _call_cortex_financial(
-        cash_eok=cash_eok, loan_eok=loan_eok, total_eok=total_eok,
-        price_eok=price_eok, surplus_eok=surplus_eok,
-        ltv_rate=ltv_rate, sgg=sgg, verdict=verdict, client=client,
+        liquid_asset_eok, loan_eok, total_eok, price_eok, surplus_eok,
+        ltv_rate, sgg, verdict, personalized_pir, dsr, survival_months, monthly_income_man, monthly_loan_payment, client
     )
 
     return {
@@ -522,16 +546,20 @@ def compute_financial_feasibility(cash_eok: float, tgt_data: dict, client=None) 
         "verdict_label": verdict_label,
         "verdict_color": verdict_color,
         "cortex_text":   cortex_text,
+        "personalized_pir": personalized_pir,
+        "dsr":           dsr,
+        "survival_months": survival_months,
+        "monthly_loan_payment": monthly_loan_payment,
     }
-
 
 def _call_cortex_financial(
     cash_eok, loan_eok, total_eok, price_eok, surplus_eok,
-    ltv_rate, sgg, verdict, client=None
+    ltv_rate, sgg, verdict, personalized_pir, dsr, survival_months,
+    monthly_income_man, monthly_loan_payment, client=None
 ) -> str:
     if client is None:
         return _financial_fallback_text(
-            cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg
+            cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg, personalized_pir, dsr, survival_months, monthly_income_man, monthly_loan_payment
         )
 
     ltv_pct = int(ltv_rate * 100)
@@ -557,18 +585,25 @@ def _call_cortex_financial(
     # Python에서 판정 이모지 결정 → LLM은 서술만 담당
     verdict_emoji = "✅" if verdict == "Safe" else ("⚠️" if verdict == "Caution" else "🚨")
 
+    survival_warning = ""
+    if survival_months < 6.0:
+        survival_warning = f"[긴급 경고] 산출된 생존 개월 수가 {survival_months}개월 미만입니다. 리포트 최상단에 '🚨 위험: 비상 예비비 부족' 이라는 텍스트를 반드시 배치하십시오!\n"
+
     prompt = (
         "[KOREAN ONLY] 너의 모든 출력물은 반드시 한국어여야 한다. 영단어(Infrastructural 등)를 한국어로 번역하여 사용하고, 전문 용어도 한국어 주거 문맥에 맞게 순화하라.\n\n"
-        "당신은 냉철한 자산 심사역입니다.\n"
+        "당신은 회원님의 삶을 지키는 개인 재무 설계사(Financial Advisor)입니다.\n"
+        "모든 조언은 '회원님의 현재 소득과 자산'을 근거로 직설적이고 통찰력 있게 제공해야 합니다.\n"
         "중요: 출력에 지시사항·괄호 설명·조건문을 절대 포함하지 마세요. 완성된 문장만 출력하세요.\n\n"
         f"{hard_constraint}\n"
+        f"{survival_warning}"
         f"[회원님 자산 현황]\n"
-        f"보유 현금: {cash_eok:.1f}억 / {sgg} LTV {ltv_pct}% 대출 한도: {loan_eok:.1f}억\n"
-        f"총 가용: {total_eok:.1f}억 / 매매가: {price_eok:.1f}억 / 여유·부족: {surplus_eok:+.1f}억\n\n"
+        f"- 금융 자산: {cash_eok:.1f}억 / {sgg} LTV {ltv_pct}% 대출: {loan_eok:.1f}억 / 매매가: {price_eok:.1f}억\n"
+        f"- 월 소득: {monthly_income_man}만원 / 대출 예상 원리금: {monthly_loan_payment:.0f}만원 (DSR {int(dsr*100)}%)\n"
+        f"- 맞춤형 PIR: {personalized_pir}년 / 생존 가능 유동성: {survival_months}개월\n\n"
         "아래 3줄 형식으로만 출력하세요. 각 줄 사이에 빈 줄을 넣으세요:\n\n"
         f"{verdict_emoji} 재무 판정: {verdict_emoji} 에 맞는 '{verdict}' 계열의 판정 결론을 한 문장으로\n\n"
-        f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n\n"
-        f"📌 핵심 조언: 회원님께 드리는 실행 가능한 재무 전략을 한 문장으로"
+        f"💡 산출 근거: <br>- 💰 자산 여력: 총가용 {total_eok:.1f}억 - 매매가 {price_eok:.1f}억 = {surplus_eok:+.1f}억<br>- 📊 맞춤형 PIR: {personalized_pir}년<br>- ⚠️ 대출 원리금 부담: 월 소득 대비 {int(dsr*100)}% (DSR)<br>- 🛡️ 생존 예비 개월: 월 {int(monthly_income_man*dsr)}만원 상환 가정 시 {survival_months}개월 버티기 가능\n\n"
+        f"📌 파트너의 냉철한 조언: DSR과 생존 개월 수를 팩트 기반으로 꼬집으며 회원님을 위한 최적의 결단(진입/관망/하향)을 한 문장으로 강력하게 권고"
     )
     cur = client._cur()
     try:
@@ -590,20 +625,20 @@ def _call_cortex_financial(
 
 
 def _financial_fallback_text(
-    cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg
+    cash_eok, loan_eok, total_eok, price_eok, surplus_eok, ltv_rate, sgg, personalized_pir, dsr, survival_months, monthly_income_man, monthly_loan_payment
 ) -> str:
     ltv_pct = int(ltv_rate * 100)
-    if surplus_eok >= 0:
+    if surplus_eok >= 0 and dsr < 0.40:
         return (
             f"✅ 재무적 안전\n"
-            f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n"
-            f"📌 적정 부채비율 유지 시 원리금 상환 부담 감내 가능 — 갈아타기 진행이 현실적입니다."
+            f"💡 산출 근거: <br>- 💰 여유/부족: {surplus_eok:+.1f}억<br>- 📊 맞춤형 PIR: {personalized_pir}년<br>- ⚠️ 대출 원리금 부담: 월 소득 대비 {int(dsr*100)}% (DSR)<br>- 🛡️ 생존 예비 개월: {survival_months}개월\n"
+            f"📌 원리금 부담이 적정하여 갈아타기 진행이 현실적입니다."
         )
     else:
         return (
-            f"🚨 영끌 위험\n"
-            f"💡 산출 근거: <br>- 💰 총 가용 자금: {cash_eok:.1f}억 + {loan_eok:.1f}억 = {total_eok:.1f}억<br>- 🏠 목표 단지 매매가: {price_eok:.1f}억<br>- ⚖️ 최종 여유 자금: {total_eok:.1f} - {price_eok:.1f} = {surplus_eok:+.1f}억\n"
-            f"📌 현금 확보 또는 목표 단지 하향 조정 후 재검토를 권고합니다."
+            f"🚨 영끌 경고\n"
+            f"💡 산출 근거: <br>- 💰 여유/부족: {surplus_eok:+.1f}억<br>- 📊 맞춤형 PIR: {personalized_pir}년<br>- ⚠️ 대출 원리금 부담: 월 소득 대비 {int(dsr*100)}% (DSR)<br>- 🛡️ 생존 예비 개월: {survival_months}개월\n"
+            f"📌 현금 여유 혹은 원리금 상환 부담이 커 리스크가 있습니다. 전략 재검토를 권고합니다."
         )
 
 
