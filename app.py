@@ -103,17 +103,30 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
                            "personal_result", "_analyzing"]:
                     st.session_state.pop(_k, None)
                 st.rerun()
-            with st.spinner("Cortex AI가 실거래 데이터를 정밀 분석 중입니다..."):
+            import time
+            with st.status("목표 단지 설정 및 시스템 초기화 중...", expanded=True) as status:
+                status.write("🛰️ [25%] 선택하신 단지의 공간 좌표 및 필지 데이터 분석 중...")
+                time.sleep(0.4)
+                status.write("📦 [50%] Snowflake 저장소에서 최신 실거래가 및 매물 시세 파싱 중...")
+                time.sleep(0.4)
+                status.write("🧠 [75%] Cortex AI가 거주지 이전(Moving-Up) 전략 시뮬레이션 준비 중...")
+                time.sleep(0.4)
+                
                 try:
                     cur_res = engine.analyze(selected_current["DANJI_ID"])
                     tgt_res = engine.analyze(selected_target["DANJI_ID"])
                     if cur_res is None or tgt_res is None:
                         st.session_state["_analyzing"] = False
+                        status.update(label="데이터 결측 경고", state="error")
                         st.info(
                             "해당 단지의 실거래 데이터 결측이 감지되어, "
                             "인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)"
                         )
                     else:
+                        status.write("✅ [100%] 초기 분석 준비 완료! 하단 리포트를 확인하세요.")
+                        status.update(label="초기화 준비 완료", state="complete", expanded=False)
+                        time.sleep(0.6)
+                        
                         st.session_state.update({
                             "cur_data":  cur_res,
                             "tgt_data":  tgt_res,
@@ -121,8 +134,10 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
                         })
                         st.session_state.pop("financial_result", None)
                         st.session_state.pop("personal_result",  None)
+                        st.rerun()
                 except Exception:
                     st.session_state["_analyzing"] = False
+                    status.update(label="오류 발생", state="error")
                     st.info(
                         "해당 단지의 실거래 데이터 결측이 감지되어, "
                         "인근 구/동 평균 데이터로 정밀 보정 중입니다. (일시 분석 제한)"
