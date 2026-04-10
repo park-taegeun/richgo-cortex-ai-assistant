@@ -164,108 +164,116 @@ def render_sidebar() -> Tuple[Optional[dict], Optional[dict]]:
         st.markdown("---")
 
         # ── MISSION 1: 나의 재무 프로필 입력 ────────────────────────────────────────
-        st.markdown(
-            f"<div class='section-header' style='margin-top:4px;' "
-            f"title='갈아타기 실행을 위한 초개인화 재무 프로필을 입력하세요.'>"
-            f"💰 나의 재무 프로필</div>",
-            unsafe_allow_html=True,
-        )
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>금융 자산 (비상금, 억)</div>", unsafe_allow_html=True)
-            liquid_asset_eok = st.number_input(
-                "금융 자산", min_value=0.0, max_value=100.0, step=0.5,
-                value=float(st.session_state.get("liquid_asset_eok", 5.0)),
-                format="%.1f", label_visibility="collapsed"
+        @st.fragment
+        def render_financial_fragment():
+            st.markdown(
+                f"<div class='section-header' style='margin-top:4px;' "
+                f"title='갈아타기 실행을 위한 초개인화 재무 프로필을 입력하세요.'>"
+                f"💰 나의 재무 프로필</div>",
+                unsafe_allow_html=True,
             )
-            st.session_state["liquid_asset_eok"] = liquid_asset_eok
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>금융 자산 (비상금, 억)</div>", unsafe_allow_html=True)
+                liquid_asset_eok = st.number_input(
+                    "금융 자산", min_value=0.0, max_value=100.0, step=0.5,
+                    value=float(st.session_state.get("liquid_asset_eok", 5.0)),
+                    format="%.1f", label_visibility="collapsed"
+                )
+                st.session_state["liquid_asset_eok"] = liquid_asset_eok
 
-            st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 세후 소득 (만원)</div>", unsafe_allow_html=True)
-            monthly_income_man = st.number_input(
-                "월 소득", min_value=0, max_value=20000, step=50,
-                value=int(st.session_state.get("monthly_income_man", 500)),
-                label_visibility="collapsed"
+                st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 세후 소득 (만원)</div>", unsafe_allow_html=True)
+                monthly_income_man = st.number_input(
+                    "월 소득", min_value=0, max_value=20000, step=50,
+                    value=int(st.session_state.get("monthly_income_man", 500)),
+                    label_visibility="collapsed"
+                )
+                st.session_state["monthly_income_man"] = monthly_income_man
+
+            with col2:
+                st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>대출 금리 (%)</div>", unsafe_allow_html=True)
+                loan_interest_rate = st.number_input(
+                    "대출 금리", min_value=1.0, max_value=15.0, step=0.1,
+                    value=float(st.session_state.get("loan_interest_rate", 4.0)),
+                    format="%.1f", label_visibility="collapsed"
+                )
+                st.session_state["loan_interest_rate"] = loan_interest_rate
+
+                st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 고정 지출 (만원)</div>", unsafe_allow_html=True)
+                monthly_expense_man = st.number_input(
+                    "월 지출", min_value=0, max_value=20000, step=50,
+                    value=int(st.session_state.get("monthly_expense_man", 200)),
+                    label_visibility="collapsed"
+                )
+                st.session_state["monthly_expense_man"] = monthly_expense_man
+
+            st.markdown(
+                f"<div style='font-size:11px;color:#445566;margin-top:8px;margin-bottom:8px;line-height:1.6;'>"
+                f"강남3구·용산 LTV 50% / 그 외 LTV 70% 자동 적용<br>"
+                f"대출 원리금 40년 균등 상환 시뮬레이션 적용</div>",
+                unsafe_allow_html=True,
             )
-            st.session_state["monthly_income_man"] = monthly_income_man
-
-        with col2:
-            st.markdown("<div style='font-size:11px;color:#8892A4;margin-bottom:2px;'>대출 금리 (%)</div>", unsafe_allow_html=True)
-            loan_interest_rate = st.number_input(
-                "대출 금리", min_value=1.0, max_value=15.0, step=0.1,
-                value=float(st.session_state.get("loan_interest_rate", 4.0)),
-                format="%.1f", label_visibility="collapsed"
-            )
-            st.session_state["loan_interest_rate"] = loan_interest_rate
-
-            st.markdown("<div style='font-size:11px;color:#8892A4;margin-top:8px;margin-bottom:2px;'>월 고정 지출 (만원)</div>", unsafe_allow_html=True)
-            monthly_expense_man = st.number_input(
-                "월 지출", min_value=0, max_value=20000, step=50,
-                value=int(st.session_state.get("monthly_expense_man", 200)),
-                label_visibility="collapsed"
-            )
-            st.session_state["monthly_expense_man"] = monthly_expense_man
-
-        st.markdown(
-            f"<div style='font-size:11px;color:#445566;margin-top:8px;margin-bottom:8px;line-height:1.6;'>"
-            f"강남3구·용산 LTV 50% / 그 외 LTV 70% 자동 적용<br>"
-            f"대출 원리금 40년 균등 상환 시뮬레이션 적용</div>",
-            unsafe_allow_html=True,
-        )
+            
+        render_financial_fragment()
 
         # ── MISSION 2: 라이프스타일 별점 가중치 ──────────────────────────────
-        st.markdown(
-            f"<div class='section-header' style='margin-top:8px;' "
-            f"title='각 항목이 갈아타기 결정에 얼마나 중요한가요? (1=낮음 ~ 5=필수)'>"
-            f"⭐ 나만의 주거 가치 우선순위</div>",
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            "<div style='font-size:11px;color:#445566;margin:-6px 0 8px 0;'>"
-            "이 요소가 갈아타기 결정에 얼마나 중요한가요?</div>",
-            unsafe_allow_html=True,
-        )
-        _STAR_OPTIONS = [1, 2, 3, 4, 5]
-        _STAR_LABELS  = {1: "1 낮음", 2: "2", 3: "3 보통", 4: "4", 5: "5 필수"}
-        prev_weights  = st.session_state.get("lifestyle_weights", {})
+        @st.fragment
+        def render_lifestyle_fragment():
+            st.markdown(
+                f"<div class='section-header' style='margin-top:8px;' "
+                f"title='각 항목이 갈아타기 결정에 얼마나 중요한가요? (1=낮음 ~ 5=필수)'>"
+                f"⭐ 나만의 주거 가치 우선순위</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                "<div style='font-size:11px;color:#445566;margin:-6px 0 8px 0;'>"
+                "이 요소가 갈아타기 결정에 얼마나 중요한가요?</div>",
+                unsafe_allow_html=True,
+            )
+            _STAR_OPTIONS = [1, 2, 3, 4, 5]
+            _STAR_LABELS  = {1: "1 낮음", 2: "2", 3: "3 보통", 4: "4", 5: "5 필수"}
+            prev_weights  = st.session_state.get("lifestyle_weights", {})
 
-        w_hak   = st.select_slider(
-            "📚 학군",   options=_STAR_OPTIONS,
-            format_func=lambda x: _STAR_LABELS[x],
-            value=prev_weights.get("학군",   3),
-            help="반경 1km 내 초등학교 수 및 국가 수준 학업성취도 기반 점수를 반영합니다.",
-        )
-        w_rail  = st.select_slider(
-            "🚇 역세권", options=_STAR_OPTIONS,
-            format_func=lambda x: _STAR_LABELS[x],
-            value=prev_weights.get("역세권", 3),
-            help="지하철역 도보 소요 시간 및 노선별 희소성 가중치를 반영합니다.",
-        )
-        w_shop  = st.select_slider(
-            "🛒 슬세권", options=_STAR_OPTIONS,
-            format_func=lambda x: _STAR_LABELS[x],
-            value=prev_weights.get("슬세권", 3),
-            help="도보권 내 마트, 병원, 카페 등 생활 편의시설 밀집도를 반영합니다.",
-        )
-        w_green = st.select_slider(
-            "🌿 쾌적성", options=_STAR_OPTIONS,
-            format_func=lambda x: _STAR_LABELS[x],
-            value=prev_weights.get("쾌적성", 3),
-            help="단지 주변 공원 면적 및 미세먼지 저감 구역 데이터를 반영합니다.",
-        )
-        lifestyle_weights = {"학군": w_hak, "역세권": w_rail, "슬세권": w_shop, "쾌적성": w_green}
-        st.session_state["lifestyle_weights"] = lifestyle_weights
+            w_hak   = st.select_slider(
+                "📚 학군",   options=_STAR_OPTIONS,
+                format_func=lambda x: _STAR_LABELS[x],
+                value=prev_weights.get("학군",   3),
+                help="반경 1km 내 초등학교 수 및 국가 수준 학업성취도 기반 점수를 반영합니다.",
+            )
+            w_rail  = st.select_slider(
+                "🚇 역세권", options=_STAR_OPTIONS,
+                format_func=lambda x: _STAR_LABELS[x],
+                value=prev_weights.get("역세권", 3),
+                help="지하철역 도보 소요 시간 및 노선별 희소성 가중치를 반영합니다.",
+            )
+            w_shop  = st.select_slider(
+                "🛒 슬세권", options=_STAR_OPTIONS,
+                format_func=lambda x: _STAR_LABELS[x],
+                value=prev_weights.get("슬세권", 3),
+                help="도보권 내 마트, 병원, 카페 등 생활 편의시설 밀집도를 반영합니다.",
+            )
+            w_green = st.select_slider(
+                "🌿 쾌적성", options=_STAR_OPTIONS,
+                format_func=lambda x: _STAR_LABELS[x],
+                value=prev_weights.get("쾌적성", 3),
+                help="단지 주변 공원 면적 및 미세먼지 저감 구역 데이터를 반영합니다.",
+            )
+            lifestyle_weights = {"학군": w_hak, "역세권": w_rail, "슬세권": w_shop, "쾌적성": w_green}
+            st.session_state["lifestyle_weights"] = lifestyle_weights
 
-        # 정규화된 비중 미리보기
-        _total_w = sum(lifestyle_weights.values()) or 1
-        _norm_preview = " · ".join(
-            f"<b style='color:#7EC8E3;'>{k}</b> {v/_total_w*100:.0f}%"
-            for k, v in lifestyle_weights.items()
-        )
-        st.markdown(
-            f"<div style='font-size:11px;color:#445566;margin-top:4px;line-height:1.8;'>"
-            f"반영 비중 — {_norm_preview}</div>",
-            unsafe_allow_html=True,
-        )
+            # 정규화된 비중 미리보기
+            _total_w = sum(lifestyle_weights.values()) or 1
+            _norm_preview = " · ".join(
+                f"<b style='color:#7EC8E3;'>{k}</b> {v/_total_w*100:.0f}%"
+                for k, v in lifestyle_weights.items()
+            )
+            st.markdown(
+                f"<div style='font-size:11px;color:#445566;margin-top:4px;line-height:1.8;'>"
+                f"반영 비중 — {_norm_preview}</div>",
+                unsafe_allow_html=True,
+            )
+            
+        render_lifestyle_fragment()
 
         st.markdown("---")
         st.markdown(
@@ -589,17 +597,11 @@ def render_dashboard(cur_data: dict, tgt_data: dict) -> None:
                 lifestyle_weights, tgt_data, sf_client
             )
 
-            with st.status("🚀 [Warp Speed] 분석 엔진 병렬 가동 중...", expanded=True) as status:
-                status.write("📡 Thread 1: Cortex AI 재무 판독 추론 중...")
-                status.write("🧠 Thread 2: Cortex AI 환경 가치 분석 중...")
-                
+            with st.status("회원님의 자산과 취향을 고려해 최적의 전략을 Cortex AI가 도출하고 있습니다...", expanded=True) as status:
                 fin = future_fin.result()
                 per = future_per.result()
                 
-                t_end = time.time()
-                elapsed_ms = int((t_end - t_start) * 1000)
-                status.update(label=f"✅ 병렬 분석 완료! (소요 시간: {elapsed_ms}ms)", state="complete", expanded=False)
-                print(f"⚡ [Warp Speed Profiler] AI Parallel Execution | latency: {elapsed_ms}ms", flush=True)
+                status.update(label=f"✅ 병렬 분석 완료!", state="complete", expanded=False)
 
         st.session_state["financial_result"] = fin
         st.session_state["personal_result"]  = per

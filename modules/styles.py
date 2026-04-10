@@ -13,6 +13,7 @@ Responsibilities:
 from typing import List
 
 from datetime import datetime, timedelta
+from modules.data_preprocessor import filter_pir_outliers
 from modules.report_engine import supply_grade
 
 import numpy as np
@@ -232,7 +233,7 @@ def build_pir_band_chart(result: dict) -> go.Figure:
     noise      = np.random.normal(0, avg * 0.04, n).cumsum() * 0.15
     drift      = np.linspace(avg * 1.08, pir_now, n)
     pir_series = np.clip(drift + noise, avg * 0.6, avg * 1.5)
-    pir_series[-1] = pir_now
+    pir_series = filter_pir_outliers(pir_series, pir_now)
 
     dot_color = MINT if idx < 0.85 else (RED_NEO if idx > 1.15 else YELLOW_NEO)
 
